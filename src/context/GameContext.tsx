@@ -99,6 +99,7 @@ interface GameContextType {
   resetReveals: () => void;
   setDisplayMessage: (msg: string | null) => void;
   setBannerVisible: (visible: boolean) => void;
+  setShowPartLabel: (visible: boolean) => void;
   triggerConfetti: () => void;
   triggerSound: (sound: SoundType) => void;
 
@@ -126,6 +127,7 @@ const ensureStateDefaults = (s: GameLedgerState): GameLedgerState => {
       ...s.presentation,
       revealedBetContestantIds: s.presentation?.revealedBetContestantIds || [],
       activeSubtaskId: s.presentation?.activeSubtaskId ?? null,
+      showPartLabel: s.presentation?.showPartLabel ?? false,
     },
   };
 };
@@ -1143,6 +1145,16 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state, broadcastState]);
 
+  const setShowPartLabel = useCallback((visible: boolean) => {
+    broadcastState({
+      ...state,
+      presentation: {
+        ...state.presentation,
+        showPartLabel: visible,
+      },
+    });
+  }, [state, broadcastState]);
+
   // Timer actions
   const startTimer = useCallback((countdownSeconds?: number) => {
     const isCountdown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
@@ -1277,6 +1289,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetReveals,
         setDisplayMessage,
         setBannerVisible,
+        setShowPartLabel,
         triggerConfetti,
         triggerSound,
         startTimer,

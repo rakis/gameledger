@@ -25,7 +25,9 @@ export const ScoreRevealView: React.FC = () => {
     ? activeTask.subtasks.findIndex((s) => s.id === currentSubtask.id)
     : -1;
 
-  const displayedTitle = currentSubtask
+  const showPartLabel = state.presentation.showPartLabel ?? activeTask.showPartLabel ?? false;
+
+  const displayedTitle = currentSubtask && showPartLabel
     ? `${activeTask.title}: Part ${subtaskIndex + 1} - ${currentSubtask.title}`
     : activeTask.title;
 
@@ -49,7 +51,7 @@ export const ScoreRevealView: React.FC = () => {
     <div className="flex-1 flex flex-col justify-center px-6 md:px-12 py-8 z-10 w-full max-w-7xl mx-auto">
       {/* Title */}
       <div className="text-center mb-8">
-        {currentSubtask && (
+        {currentSubtask && showPartLabel && (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/80 text-amber-300 border border-amber-700/60 text-xs font-bold uppercase tracking-wider mb-2">
             <Layers className="w-3.5 h-3.5" />
             <span>Part {subtaskIndex + 1}</span>

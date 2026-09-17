@@ -66,6 +66,7 @@ export interface Task {
   subtasks?: SubTask[];
   subtaskScoringMode?: SubtaskScoringMode;
   bets?: Record<string, TaskBet>; // bettorId -> TaskBet
+  showPartLabel?: boolean; // Whether to display part label badge on stage screen (default: false)
 }
 
 export interface Episode {
@@ -93,6 +94,7 @@ export interface PresentationConfig {
   bannerVisible: boolean;
   activeSubtaskId?: string | null;
   revealedBetContestantIds?: string[];
+  showPartLabel?: boolean; // Whether to display part label badge on stage screen (default: false)
 }
 
 export interface TimerState {

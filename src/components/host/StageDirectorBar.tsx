@@ -28,6 +28,7 @@ export const StageDirectorBar: React.FC = () => {
     revealAllBets,
     resetReveals,
     setBannerVisible,
+    setShowPartLabel,
   } = useGame();
 
   const currentView = state.presentation.view;
@@ -110,6 +111,21 @@ export const StageDirectorBar: React.FC = () => {
                   P{idx + 1}
                 </button>
               ))}
+              <button
+                onClick={() => setShowPartLabel(!state.presentation.showPartLabel)}
+                className={`ml-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                  state.presentation.showPartLabel
+                    ? 'bg-amber-600/30 text-amber-300 border-amber-500 shadow-sm'
+                    : 'bg-stone-900 text-stone-500 border-stone-800 hover:text-stone-300'
+                }`}
+                title={
+                  state.presentation.showPartLabel
+                    ? 'Part label is visible on TV (click to hide for surprise)'
+                    : 'Part label is hidden on TV (click to show on TV)'
+                }
+              >
+                {state.presentation.showPartLabel ? 'TV Label: ON' : 'TV Label: OFF'}
+              </button>
             </div>
           )}
 

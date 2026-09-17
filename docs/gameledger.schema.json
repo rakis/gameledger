@@ -319,6 +319,10 @@
             "$ref": "#/$defs/taskBet"
           }
         },
+        "showPartLabel": {
+          "type": "boolean",
+          "description": "Whether to display the Part label badge and title prefix on the presentation stage screen"
+        },
         "orderIndex": {
           "type": "integer",
           "description": "0-based display position in the episode",
@@ -394,6 +398,10 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "List of spectator contestant IDs whose wagers have been revealed"
+        },
+        "showPartLabel": {
+          "type": "boolean",
+          "description": "Whether to display the Part label badge and title prefix on the presentation stage screen"
         },
         "displayMessage": {
           "type": ["string", "null"],

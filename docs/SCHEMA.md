@@ -130,6 +130,7 @@ interface Task {
   subtasks?: SubTask[];               // Multi-part subtasks (e.g., Part 1, Part 2)
   subtaskScoringMode?: SubtaskScoringMode; // 'sum' | 'final_rank' | 'custom'
   bets?: Record<string, TaskBet>;     // Spectator wagers (bettorId -> TaskBet)
+  showPartLabel?: boolean;            // Whether to display 'Part X' label on stage screen (default: false)
   orderIndex: number;     // 0-based order position in the episode
   notes?: string;         // Optional private host notes
 }
@@ -225,6 +226,7 @@ interface PresentationConfig {
   spotlightContestantId: string | null; // Highlighted contestant ID
   activeSubtaskId: string | null;       // Currently focused subtask on stage
   revealedBetContestantIds: string[];   // Bettor IDs whose wagers have been revealed
+  showPartLabel?: boolean;              // Override to display 'Part X' labels on stage (default: false)
   displayMessage: string | null;        // Custom banner text
   bannerVisible: boolean;      // Toggle bottom quote banner
 }

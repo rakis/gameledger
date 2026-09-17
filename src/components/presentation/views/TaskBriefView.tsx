@@ -55,7 +55,9 @@ export const TaskBriefView: React.FC = () => {
   const badge = getTypeBadge(activeTask.type);
   const BadgeIcon = badge.icon;
 
-  const displayedTitle = currentSubtask
+  const showPartLabel = state.presentation.showPartLabel ?? activeTask.showPartLabel ?? false;
+
+  const displayedTitle = currentSubtask && showPartLabel
     ? `${activeTask.title}: Part ${subtaskIndex + 1} - ${currentSubtask.title}`
     : activeTask.title;
 
@@ -75,7 +77,7 @@ export const TaskBriefView: React.FC = () => {
           {badge.label}
         </span>
 
-        {currentSubtask && (
+        {currentSubtask && showPartLabel && (
           <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-bold bg-amber-950/80 text-amber-300 border border-amber-700/60 shadow-md">
             <Layers className="w-4 h-4" />
             <span>Part {subtaskIndex + 1}</span>

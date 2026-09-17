@@ -82,6 +82,7 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
   // Subtask configuration
   const [hasSubtasks, setHasSubtasks] = useState(false);
   const [subtaskScoringMode, setSubtaskScoringMode] = useState<SubtaskScoringMode>('sum');
+  const [showPartLabel, setShowPartLabel] = useState(false);
   const [subtaskList, setSubtaskList] = useState<SubtaskDraft[]>([
     { title: 'Part 1', brief: '' },
     { title: 'Part 2', brief: '' },
@@ -124,6 +125,7 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
       timeLimitSeconds: isTimed ? timeLimitMinutes * 60 : undefined,
       subtasks: generatedSubtasks,
       subtaskScoringMode: hasSubtasks ? subtaskScoringMode : undefined,
+      showPartLabel: hasSubtasks ? showPartLabel : undefined,
     });
 
     onClose();
@@ -134,6 +136,7 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
     setIsTimed(false);
     setHasSubtasks(false);
     setSubtaskScoringMode('sum');
+    setShowPartLabel(false);
     setSubtaskList([
       { title: 'Part 1', brief: '' },
       { title: 'Part 2', brief: '' },
@@ -145,6 +148,7 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
     setBrief(preset.brief);
     setType(preset.type);
     setIsTimed(preset.isTimed);
+    setShowPartLabel(false);
     if (preset.timeLimitSeconds) {
       setTimeLimitMinutes(Math.floor(preset.timeLimitSeconds / 60));
     }
@@ -311,6 +315,27 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
                     <option value="final_rank">Final Ranking (5 to 1 points based on total)</option>
                     <option value="custom">Manual Rollup (Score master task manually)</option>
                   </select>
+                </div>
+
+                {/* TV Part Label Visibility */}
+                <div className="flex items-center justify-between gap-3 bg-stone-900/80 p-2.5 rounded-xl border border-stone-800">
+                  <div>
+                    <span className="text-xs font-bold text-stone-300 block">
+                      Show Part Label on Stage Screen
+                    </span>
+                    <span className="text-[11px] text-stone-400">
+                      Off by default to preserve the element of surprise for contestants
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={showPartLabel}
+                      onChange={(e) => setShowPartLabel(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-stone-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-tm-gold"></div>
+                  </label>
                 </div>
 
                 {/* Subtask list */}

@@ -305,23 +305,40 @@ export const TaskScorerPanel: React.FC = () => {
             </button>
           </div>
 
-          {/* Rollup Scoring Mode Selector */}
+          {/* Rollup Scoring Mode & TV Label Toggle */}
           {subtasks.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-stone-400">
-              <span className="font-medium">Rollup Mode:</span>
-              <select
-                value={activeTask.subtaskScoringMode || 'sum'}
-                onChange={(e) =>
-                  updateTask(activeTask.id, {
-                    subtaskScoringMode: e.target.value as SubtaskScoringMode,
-                  })
-                }
-                className="bg-stone-950 text-stone-200 px-2 py-1 rounded-lg border border-stone-800 font-semibold focus:outline-none focus:border-tm-gold cursor-pointer"
+            <div className="flex items-center gap-4 text-xs text-stone-400">
+              <label
+                className="flex items-center gap-1.5 cursor-pointer select-none"
+                title="Toggle displaying 'Part X' labels on stage screen"
               >
-                <option value="sum">Sum of Parts</option>
-                <option value="final_rank">Final Rank (5,4,3,2,1)</option>
-                <option value="custom">Custom / Manual</option>
-              </select>
+                <input
+                  type="checkbox"
+                  checked={activeTask.showPartLabel ?? false}
+                  onChange={(e) =>
+                    updateTask(activeTask.id, { showPartLabel: e.target.checked })
+                  }
+                  className="rounded bg-stone-950 border-stone-700 text-tm-gold focus:ring-0 cursor-pointer"
+                />
+                <span className="text-stone-300 font-medium">Show Part on TV</span>
+              </label>
+
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Rollup:</span>
+                <select
+                  value={activeTask.subtaskScoringMode || 'sum'}
+                  onChange={(e) =>
+                    updateTask(activeTask.id, {
+                      subtaskScoringMode: e.target.value as SubtaskScoringMode,
+                    })
+                  }
+                  className="bg-stone-950 text-stone-200 px-2 py-1 rounded-lg border border-stone-800 font-semibold focus:outline-none focus:border-tm-gold cursor-pointer"
+                >
+                  <option value="sum">Sum of Parts</option>
+                  <option value="final_rank">Final Rank (5,4,3,2,1)</option>
+                  <option value="custom">Custom / Manual</option>
+                </select>
+              </div>
             </div>
           )}
         </div>
