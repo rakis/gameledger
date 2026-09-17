@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    background-color: #0d0406;
+    background-image: 
+      radial-gradient(circle at 50% 20%, rgba(139, 17, 30, 0.25) 0%, transparent 65%),
+      radial-gradient(circle at 80% 80%, rgba(86, 7, 15, 0.2) 0%, transparent 50%),
+      radial-gradient(circle at 10% 90%, rgba(30, 8, 12, 0.4) 0%, transparent 50%);
+    background-attachment: fixed;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* Authentic Parchment effect for Task Briefs */
+.parchment-texture {
+  background-color: #f7f1df;
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(200, 170, 110, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(180, 150, 90, 0.15) 0%, transparent 45%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(230, 215, 180, 0.3) 100%);
+  color: #1f1914;
+  box-shadow: 
+    0 15px 35px -5px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(120, 90, 40, 0.3),
+    inset 0 0 40px rgba(190, 160, 110, 0.35);
+}
+
+/* Wax Seal styling */
+.wax-seal {
+  background: radial-gradient(circle at 35% 35%, #cf1b32 0%, #8b111e 65%, #4e070e 100%);
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.6),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+  border: 2px solid #5d0912;
+}
+
+/* Gold Gradient Borders & Text */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #f6e4b8 0%, #cba052 50%, #9e7b33 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-border {
+  border-image: linear-gradient(to right, #9e7b33, #f6e4b8, #cba052, #9e7b33) 1;
+}
+
+/* Animated Stage Glow */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(203, 160, 82, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(203, 160, 82, 0.55);
+  }
+}
+
+.glow-active {
+  animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+/* Disqualification Stamp Effect */
+.dq-stamp {
+  border: 4px dashed #ef4444;
+  color: #ef4444;
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  transform: rotate(-12deg);
+  background-color: rgba(239, 68, 68, 0.12);
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #14070a;
+}
+::-webkit-scrollbar-thumb {
+  background: #3d1822;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8b111e;
+}
