@@ -242,12 +242,12 @@ export const TaskScorerPanel: React.FC = () => {
             return (
               <div
                 key={c.id}
-                className={`p-4 md:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors ${
+                className={`p-4 md:p-5 flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4 transition-colors ${
                   isDQ ? 'bg-red-950/20' : 'hover:bg-stone-800/30'
                 }`}
               >
                 {/* Contestant identity */}
-                <div className="flex items-center gap-3.5 min-w-[200px]">
+                <div className="flex items-center gap-3.5 min-w-0 2xl:min-w-[200px] flex-shrink-0">
                   <div
                     className="w-11 h-11 rounded-full flex items-center justify-center text-xl font-bold shadow-md ring-2 ring-white/10"
                     style={{ backgroundColor: c.colorHex }}
@@ -325,9 +325,9 @@ export const TaskScorerPanel: React.FC = () => {
                 </div>
 
                 {/* Attempt Details: Time taken & Attempt Notes */}
-                <div className="flex items-center gap-2 flex-1 max-w-md">
+                <div className="flex items-center gap-2 flex-1 w-full 2xl:w-auto 2xl:max-w-md min-w-0">
                   {/* Time taken input */}
-                  <div className="flex items-center gap-1 bg-stone-950 px-2.5 py-1.5 rounded-xl border border-stone-800 min-w-[130px]">
+                  <div className="flex items-center gap-1 bg-stone-950 px-2.5 py-1.5 rounded-xl border border-stone-800 min-w-[130px] flex-shrink-0">
                     <Clock className="w-3.5 h-3.5 text-tm-gold flex-shrink-0" />
                     <input
                       type="number"
@@ -358,7 +358,7 @@ export const TaskScorerPanel: React.FC = () => {
                   </div>
 
                   {/* Attempt Note */}
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <input
                       type="text"
                       placeholder={isDQ ? 'Reason for DQ...' : 'Attempt notes or description...'}
