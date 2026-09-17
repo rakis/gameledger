@@ -9,8 +9,8 @@ This document serves as the primary operational and behavioral guide for AI codi
 **GameLedger** is a standalone, client-side web application crafted for tracking, scoring, and presenting Taskmaster-style games, party game nights, and competitive multi-episode series.
 
 ### Core Stack
-- **Framework**: React 18 + TypeScript + Vite 6
-- **Styling**: Tailwind CSS 3 + Custom Taskmaster theme utilities (parchment, wax seal, gold accents)
+- **Framework**: React 19 + TypeScript 7 + Vite 8
+- **Styling**: Tailwind CSS 4 (@tailwindcss/vite) + Custom Taskmaster theme utilities (parchment, wax seal, gold accents)
 - **Icons**: Lucide React
 - **Celebration / Audio**: `canvas-confetti` + Native Web Audio API synthesizer (zero external audio files)
 - **State & Sync**: React Context + `localStorage` + `BroadcastChannel` (for instant multi-screen control)
@@ -58,15 +58,15 @@ gameledger/
 │   ├── utils/
 │   │   └── audio.ts          # Web Audio API procedural sound cues
 │   ├── App.tsx               # View routing (Stage mode ?stage=true vs Host cockpit)
-│   ├── index.css             # Tailwind base + custom parchment & wax seal styling
-│   └── main.tsx              # Application entry point
+│   ├── index.css             # Tailwind 4 theme + custom parchment & wax seal styling
+│   ├── main.tsx              # Application entry point
+│   └── vite-env.d.ts         # Vite client type references
 ├── tests/
 │   └── scoring.test.mjs      # Unit tests for scoring logic, DQs, and ranks
 ├── index.html                # HTML entry point (relative favicon & script links)
 ├── package.json
-├── tailwind.config.js
 ├── tsconfig.json             # Strict TypeScript compiler options
-└── vite.config.ts            # Vite config with base: './' for GitHub Pages
+└── vite.config.ts            # Vite config with base: './' & @tailwindcss/vite
 ```
 
 ---
