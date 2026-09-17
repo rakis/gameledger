@@ -1,4 +1,10 @@
-import { GameLedgerState, Contestant, Episode } from '../types';
+import { GameLedgerState, Contestant, Episode, Team } from '../types';
+
+export const DEFAULT_TEAMS: Team[] = [
+  { id: 'A', name: 'Team A', colorHex: '#3b82f6', avatar: '🦁' },
+  { id: 'B', name: 'Team B', colorHex: '#ef4444', avatar: '🐯' },
+  { id: 'C', name: 'Team C', colorHex: '#10b981', avatar: '🦉' },
+];
 
 export const DEMO_CONTESTANTS: Contestant[] = [
   {
@@ -272,6 +278,7 @@ export const INITIAL_DEMO_STATE: GameLedgerState = {
   taskmasterName: 'The Taskmaster',
   assistantName: 'Little Alex',
   contestants: DEMO_CONTESTANTS,
+  teams: DEFAULT_TEAMS,
   episodes: DEMO_EPISODES,
   activeEpisodeId: 'ep1',
   activeTaskId: 't1_1',
@@ -302,8 +309,9 @@ export const EMPTY_STATE: GameLedgerState = {
     { id: 'p2', name: 'Player 2', seatIndex: 1, colorHex: '#f59e0b', avatar: '2', teamId: 'A' },
     { id: 'p3', name: 'Player 3', seatIndex: 2, colorHex: '#10b981', avatar: '3', teamId: 'B' },
     { id: 'p4', name: 'Player 4', seatIndex: 3, colorHex: '#8b5cf6', avatar: '4', teamId: 'B' },
-    { id: 'p5', name: 'Player 5', seatIndex: 4, colorHex: '#ef4444', avatar: '5', teamId: 'B' },
+    { id: 'p5', name: 'Player 5', seatIndex: 4, colorHex: '#ef4444', avatar: '5', teamId: 'C' },
   ],
+  teams: DEFAULT_TEAMS,
   episodes: [
     {
       id: 'ep1',

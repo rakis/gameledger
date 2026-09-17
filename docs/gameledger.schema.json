@@ -57,6 +57,13 @@
       "type": ["string", "null"],
       "description": "ID of the currently selected task"
     },
+    "teams": {
+      "type": "array",
+      "description": "List of multi-team definitions",
+      "items": {
+        "$ref": "#/$defs/team"
+      }
+    },
     "presentation": {
       "$ref": "#/$defs/presentationConfig"
     },
@@ -70,6 +77,29 @@
     }
   },
   "$defs": {
+    "team": {
+      "type": "object",
+      "required": ["id", "name", "colorHex"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the team"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the team"
+        },
+        "colorHex": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "Hexadecimal color representing the team"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Emoji character or badge icon representing the team"
+        }
+      }
+    },
     "contestant": {
       "type": "object",
       "required": ["id", "name", "seatIndex", "colorHex", "avatar"],
@@ -98,8 +128,7 @@
         },
         "teamId": {
           "type": ["string", "null"],
-          "enum": ["A", "B", null],
-          "description": "Team designation for team tasks"
+          "description": "Team designation matching a team ID"
         }
       }
     },
@@ -118,6 +147,10 @@
         "isDisqualified": {
           "type": "boolean",
           "description": "Whether the contestant was disqualified (0 pts)"
+        },
+        "isSatOut": {
+          "type": "boolean",
+          "description": "Whether the contestant sat out/spectated this task"
         },
         "dqReason": {
           "type": "string",
@@ -144,6 +177,84 @@
           "type": "integer",
           "description": "Finishing rank within this specific task",
           "minimum": 1
+        }
+      }
+    },
+    "subtask": {
+      "type": "object",
+      "required": ["id", "title", "brief", "isTimed", "scores", "orderIndex"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the subtask"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the subtask/part"
+        },
+        "brief": {
+          "type": "string",
+          "description": "Instructions for this specific subtask"
+        },
+        "isTimed": {
+          "type": "boolean",
+          "description": "Whether the subtask has a timer"
+        },
+        "timeLimitSeconds": {
+          "type": "integer",
+          "description": "Countdown limit in seconds",
+          "minimum": 1
+        },
+        "scores": {
+          "type": "object",
+          "description": "Map of contestant IDs to ScoreEntry for this subtask",
+          "additionalProperties": {
+            "$ref": "#/$defs/scoreEntry"
+          }
+        },
+        "orderIndex": {
+          "type": "integer",
+          "description": "0-based position within parent task",
+          "minimum": 0
+        },
+        "weight": {
+          "type": "number",
+          "description": "Optional multiplier for subtask score"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Host notes for this subtask"
+        }
+      }
+    },
+    "taskBet": {
+      "type": "object",
+      "required": ["bettorId", "rewardPoints"],
+      "properties": {
+        "bettorId": {
+          "type": "string",
+          "description": "ID of the sat-out contestant placing the bet"
+        },
+        "targetContestantId": {
+          "type": "string",
+          "description": "Contestant ID predicted to win"
+        },
+        "targetTeamId": {
+          "type": "string",
+          "description": "Team ID predicted to win"
+        },
+        "rewardPoints": {
+          "type": "number",
+          "description": "Bonus points earned if prediction succeeds",
+          "minimum": 0
+        },
+        "isWon": {
+          "type": "boolean",
+          "description": "Whether the bet was resolved as won"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Spectator banter or wager remark"
         }
       }
     },
@@ -182,6 +293,30 @@
           "description": "Map of contestant IDs to their ScoreEntry",
           "additionalProperties": {
             "$ref": "#/$defs/scoreEntry"
+          }
+        },
+        "assignedContestantIds": {
+          "type": "array",
+          "description": "Active competing contestants for this task. Remaining contestants sit out.",
+          "items": { "type": "string" }
+        },
+        "subtasks": {
+          "type": "array",
+          "description": "List of multi-part subtasks",
+          "items": {
+            "$ref": "#/$defs/subtask"
+          }
+        },
+        "subtaskScoringMode": {
+          "type": "string",
+          "enum": ["sum", "final_rank", "custom"],
+          "description": "Scoring mode for aggregating subtasks"
+        },
+        "bets": {
+          "type": "object",
+          "description": "Wagers placed by sat-out contestants",
+          "additionalProperties": {
+            "$ref": "#/$defs/taskBet"
           }
         },
         "orderIndex": {
@@ -250,6 +385,15 @@
         "spotlightContestantId": {
           "type": ["string", "null"],
           "description": "Contestant ID currently highlighted with stage spotlight"
+        },
+        "activeSubtaskId": {
+          "type": ["string", "null"],
+          "description": "ID of currently focused subtask on the stage screen"
+        },
+        "revealedBetContestantIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of spectator contestant IDs whose wagers have been revealed"
         },
         "displayMessage": {
           "type": ["string", "null"],

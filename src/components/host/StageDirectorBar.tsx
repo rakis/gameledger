@@ -13,19 +13,27 @@ import {
   RotateCcw,
   Sparkles,
   MessageSquare,
+  Layers,
+  Coins,
 } from 'lucide-react';
 
 export const StageDirectorBar: React.FC = () => {
   const {
     state,
+    activeTask,
     setPresentationView,
+    setActiveSubtask,
     revealNextScore,
     revealAllScores,
+    revealAllBets,
     resetReveals,
     setBannerVisible,
   } = useGame();
 
   const currentView = state.presentation.view;
+  const betsCount = activeTask?.bets ? Object.keys(activeTask.bets).length : 0;
+  const revealedBetsCount = state.presentation.revealedBetContestantIds?.length || 0;
+  const hasSubtasks = (activeTask?.subtasks?.length || 0) > 0;
 
   const viewButtons: { id: PresentationViewType; label: string; icon: React.ElementType }[] = [
     { id: 'idle', label: 'Holding Logo', icon: Crown },
@@ -70,8 +78,41 @@ export const StageDirectorBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Reveal / Context controls */}
+        {/* Middle/Right: Subtasks & Reveal controls */}
         <div className="flex items-center gap-2 flex-wrap">
+          {hasSubtasks && ['task_brief', 'attempts', 'score_reveal'].includes(currentView) && (
+            <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-amber-800/60 shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-amber-400 px-1.5 flex items-center gap-1">
+                <Layers className="w-3 h-3" />
+                Part:
+              </span>
+              <button
+                onClick={() => setActiveSubtask(null)}
+                className={`px-2 py-0.5 rounded text-xs font-semibold transition-all ${
+                  !state.presentation.activeSubtaskId
+                    ? 'bg-amber-600 text-white font-bold shadow-sm'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                Overview
+              </button>
+              {activeTask?.subtasks?.map((st, idx) => (
+                <button
+                  key={st.id}
+                  onClick={() => setActiveSubtask(st.id)}
+                  className={`px-2 py-0.5 rounded text-xs font-semibold transition-all ${
+                    state.presentation.activeSubtaskId === st.id
+                      ? 'bg-amber-600 text-white font-bold shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                  title={st.title}
+                >
+                  P{idx + 1}
+                </button>
+              ))}
+            </div>
+          )}
+
           {currentView === 'score_reveal' && (
             <div className="flex items-center gap-1.5 bg-stone-950 p-1 rounded-xl border border-tm-gold/40">
               <button
@@ -98,6 +139,22 @@ export const StageDirectorBar: React.FC = () => {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
+
+              {betsCount > 0 && (
+                <button
+                  onClick={revealAllBets}
+                  disabled={revealedBetsCount >= betsCount}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                    revealedBetsCount >= betsCount
+                      ? 'bg-purple-950/40 text-purple-400 border-purple-800/40'
+                      : 'bg-purple-700 hover:bg-purple-600 text-white border-purple-500 shadow-sm animate-pulse'
+                  }`}
+                  title="Reveal spectator bets on the presentation screen"
+                >
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>Bets ({revealedBetsCount}/{betsCount})</span>
+                </button>
+              )}
             </div>
           )}
 

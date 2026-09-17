@@ -1,24 +1,55 @@
 export type TaskType = 'prize' | 'filmed' | 'team' | 'studio' | 'tiebreak';
 
+export interface Team {
+  id: string;
+  name: string;
+  colorHex: string;
+  avatar?: string;
+}
+
 export interface Contestant {
   id: string;
   name: string;
   seatIndex: number;
   colorHex: string;
   avatar: string; // Emoji, SVG icon identifier, or data URL
-  teamId?: 'A' | 'B' | null;
+  teamId?: string | null;
 }
 
 export interface ScoreEntry {
   contestantId: string;
   points: number;
   isDisqualified: boolean;
+  isSatOut?: boolean;
   dqReason?: string;
   bonusPoints?: number;
   penaltyPoints?: number;
   timeTakenSeconds?: number;
   attemptNote?: string;
   rank?: number;
+}
+
+export type SubtaskScoringMode = 'sum' | 'final_rank' | 'custom';
+
+export interface SubTask {
+  id: string;
+  title: string;
+  brief: string;
+  isTimed: boolean;
+  timeLimitSeconds?: number;
+  scores: Record<string, ScoreEntry>;
+  orderIndex: number;
+  weight?: number;
+  notes?: string;
+}
+
+export interface TaskBet {
+  bettorId: string;
+  targetContestantId?: string;
+  targetTeamId?: string;
+  rewardPoints: number;
+  isWon?: boolean;
+  notes?: string;
 }
 
 export interface Task {
@@ -31,6 +62,10 @@ export interface Task {
   scores: Record<string, ScoreEntry>;
   orderIndex: number;
   notes?: string;
+  assignedContestantIds?: string[]; // If undefined/empty, all contestants participate
+  subtasks?: SubTask[];
+  subtaskScoringMode?: SubtaskScoringMode;
+  bets?: Record<string, TaskBet>; // bettorId -> TaskBet
 }
 
 export interface Episode {
@@ -56,6 +91,8 @@ export interface PresentationConfig {
   spotlightContestantId: string | null;
   displayMessage: string | null;
   bannerVisible: boolean;
+  activeSubtaskId?: string | null;
+  revealedBetContestantIds?: string[];
 }
 
 export interface TimerState {
@@ -73,9 +110,11 @@ export interface GameLedgerState {
   taskmasterName: string;
   assistantName: string;
   contestants: Contestant[];
+  teams?: Team[];
   episodes: Episode[];
   activeEpisodeId: string;
   activeTaskId: string | null;
+  activeSubtaskId?: string | null;
   presentation: PresentationConfig;
   timer: TimerState;
   soundEnabled: boolean;

@@ -28,9 +28,13 @@ The exported file is a single JSON document representing the full state of a ser
 
 ```text
 GameLedgerState
+├── teams: Team[] (optional multi-team roster)
 ├── contestants: Contestant[]
 ├── episodes: Episode[]
 │   └── tasks: Task[]
+│       ├── assignedContestantIds: string[] (optional active participants)
+│       ├── subtasks: SubTask[] (optional multi-part tasks)
+│       ├── bets: Record<bettorId, TaskBet> (spectator wagers)
 │       └── scores: Record<contestantId, ScoreEntry>
 ├── presentation: PresentationConfig
 └── timer: TimerState
@@ -46,6 +50,7 @@ GameLedgerState
 | `seriesTitle` | `string` | **Yes** | The name of the game night or multi-episode series. |
 | `taskmasterName` | `string` | No | Name of the Taskmaster host (default: `"The Taskmaster"`). |
 | `assistantName` | `string` | No | Name of the scoring assistant (default: `"The Assistant"`). |
+| `teams` | `Team[]` | No | Array of configured teams (>2 supported). |
 | `contestants` | `Contestant[]` | **Yes** | Array of participating players (minimum 2). |
 | `episodes` | `Episode[]` | **Yes** | Array of episodes in the series (minimum 1). |
 | `activeEpisodeId` | `string` | **Yes** | ID of the currently selected episode. |
@@ -58,6 +63,21 @@ GameLedgerState
 
 ## 🧩 Entity Schemas
 
+### Team
+
+Represents a multi-player team. The application supports 2, 3, or more arbitrary teams with custom names, colors, and badge emojis.
+
+```typescript
+interface Team {
+  id: string;        // Unique identifier (e.g., "team_a", "team_1726538400")
+  name: string;      // Display name (e.g., "Team Blue", "The Vile Bards")
+  colorHex: string;  // Hex color for UI badges & progress bars (e.g., "#3b82f6")
+  avatar?: string;   // Team badge emoji or symbol (e.g., "🛡️", "🦅")
+}
+```
+
+---
+
 ### Contestant
 
 Represents a player competing in the series.
@@ -69,7 +89,7 @@ interface Contestant {
   seatIndex: number;      // 0-based seating order position (0 to N-1)
   colorHex: string;       // Hex color for UI badges & score bars (e.g., "#3b82f6")
   avatar: string;         // Emoji symbol, SVG icon, or image data URL (e.g., "🦊")
-  teamId?: "A" | "B" | null; // Optional team grouping for team tasks
+  teamId?: string | null; // Optional team grouping matching a Team ID
 }
 ```
 
@@ -95,7 +115,7 @@ interface Episode {
 
 ### Task
 
-Represents an individual challenge within an episode.
+Represents an individual challenge within an episode. Tasks may be solo, multi-part (`subtasks`), or limited to designated active participants with remaining players sitting out.
 
 ```typescript
 interface Task {
@@ -106,6 +126,10 @@ interface Task {
   isTimed: boolean;       // Whether a timer / countdown is used
   timeLimitSeconds?: number; // Optional countdown duration (e.g., 600 for 10 mins)
   scores: Record<string, ScoreEntry>; // Map of contestantId -> ScoreEntry
+  assignedContestantIds?: string[];   // Actively competing contestants. Others sit out.
+  subtasks?: SubTask[];               // Multi-part subtasks (e.g., Part 1, Part 2)
+  subtaskScoringMode?: SubtaskScoringMode; // 'sum' | 'final_rank' | 'custom'
+  bets?: Record<string, TaskBet>;     // Spectator wagers (bettorId -> TaskBet)
   orderIndex: number;     // 0-based order position in the episode
   notes?: string;         // Optional private host notes
 }
@@ -113,22 +137,62 @@ interface Task {
 type TaskType = 
   | "prize"     // Contestants bring in an item matching a theme
   | "filmed"    // Location / pre-recorded solo challenge
-  | "team"      // Team A vs Team B challenge
+  | "team"      // Team challenge across configured teams
   | "studio"    // Live studio / finale showdown
   | "tiebreak"; // Sudden-death tie-breaker task
+
+type SubtaskScoringMode = "sum" | "final_rank" | "custom";
+```
+
+---
+
+### SubTask
+
+Represents a distinct stage or component of a multi-part challenge.
+
+```typescript
+interface SubTask {
+  id: string;             // Unique identifier (e.g., "st_1")
+  title: string;          // Subtask title (e.g., "Part 1: The Gathering")
+  brief: string;          // Instructions for this specific subtask
+  isTimed: boolean;       // Whether this subtask is timed
+  timeLimitSeconds?: number; // Duration limit in seconds
+  scores: Record<string, ScoreEntry>; // Contestant scores for this subtask
+  orderIndex: number;     // 0-based sequence index
+  weight?: number;        // Optional score weight multiplier
+  notes?: string;         // Optional host notes
+}
+```
+
+---
+
+### TaskBet
+
+Represents a wager placed by a sat-out contestant predicting the winner of a task.
+
+```typescript
+interface TaskBet {
+  bettorId: string;            // ID of the sat-out contestant placing the bet
+  targetContestantId?: string; // Competing contestant predicted to win
+  targetTeamId?: string;       // Competing team predicted to win
+  rewardPoints: number;        // Payout points credited if prediction succeeds
+  isWon?: boolean;             // true if won, false if lost, undefined if pending
+  notes?: string;              // Spectator banter or prediction reasoning
+}
 ```
 
 ---
 
 ### ScoreEntry
 
-Represents a single contestant's result and awarded points for a task.
+Represents a single contestant's result and awarded points for a task or subtask.
 
 ```typescript
 interface ScoreEntry {
   contestantId: string;        // Must match a Contestant ID
   points: number;              // Final points awarded (0 to 5 standard, or custom)
   isDisqualified: boolean;     // If true, points count as 0 on leaderboards
+  isSatOut?: boolean;          // If true, contestant spectated (excluded from task counts)
   dqReason?: string;           // Explanation for disqualification
   bonusPoints?: number;        // Optional bonus points included (e.g., +1)
   penaltyPoints?: number;      // Optional deduction applied (e.g., -1)
@@ -138,10 +202,14 @@ interface ScoreEntry {
 }
 ```
 
-#### Scoring Rules & Disqualifications:
-- When `isDisqualified: true`, the leaderboard calculations automatically treat the contestant's score for this task as `0`, regardless of the `points` field.
-- Negative scores (penalties) and decimal scores (fractional points) are supported.
-- Ties are supported: multiple contestants may receive identical points and ranks.
+#### Scoring Rules, Sit-Outs, & Betting:
+- **Disqualifications**: When `isDisqualified: true`, leaderboard calculations automatically treat the score as `0`, regardless of `points`.
+- **Sit-Out Participants**: If `assignedContestantIds` is specified on a task, any unassigned contestant sits out. They are not penalized with unearned 0s or DQs, and the task does not count towards their completed task tally.
+- **Spectator Bets Resolution**: If a sat-out contestant bets correctly on the winner, their `scores[bettorId]` entry is credited with `points: rewardPoints`, `bonusPoints: rewardPoints`, and `isSatOut: true`. This allows them to receive bonus points while remaining recorded as a sat-out spectator.
+- **Subtask Aggregation**: Subtask points can be aggregated via:
+  - `sum`: Direct sum of points earned across all subtasks.
+  - `final_rank`: Contestants are ranked by total subtask points and awarded standard 5-to-1 Taskmaster scale points on the parent task.
+  - `custom`: Manual host scoring on the parent task.
 
 ---
 
@@ -155,9 +223,12 @@ interface PresentationConfig {
   revealedContestantIds: string[]; // Contestant IDs whose scores are revealed
   revealedAll: boolean;        // Whether all scores are revealed
   spotlightContestantId: string | null; // Highlighted contestant ID
-  displayMessage: string | null; // Custom banner text
+  activeSubtaskId: string | null;       // Currently focused subtask on stage
+  revealedBetContestantIds: string[];   // Bettor IDs whose wagers have been revealed
+  displayMessage: string | null;        // Custom banner text
   bannerVisible: boolean;      // Toggle bottom quote banner
 }
+```
 
 type PresentationViewType =
   | "idle"                // Stage holding screen with wax seal logo

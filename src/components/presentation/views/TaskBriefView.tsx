@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGame } from '../../../context/GameContext';
-import { Clock, Timer, Users, Award, ShieldAlert } from 'lucide-react';
+import { Clock, Timer, Users, Award, ShieldAlert, Layers, UserCheck, Eye } from 'lucide-react';
 
 export const TaskBriefView: React.FC = () => {
   const { activeTask, state } = useGame();
@@ -12,6 +12,23 @@ export const TaskBriefView: React.FC = () => {
       </div>
     );
   }
+
+  // Active subtask if any
+  const currentSubtask = state.presentation.activeSubtaskId && activeTask.subtasks
+    ? activeTask.subtasks.find((s) => s.id === state.presentation.activeSubtaskId)
+    : null;
+
+  const subtaskIndex = currentSubtask && activeTask.subtasks
+    ? activeTask.subtasks.findIndex((s) => s.id === currentSubtask.id)
+    : -1;
+
+  // Participant assignments
+  const assignedIds = activeTask.assignedContestantIds || state.contestants.map((c) => c.id);
+  const activeContestants = state.contestants.filter((c) => assignedIds.includes(c.id));
+  const satOutContestants = state.contestants.filter((c) => !assignedIds.includes(c.id));
+  const isPartialParticipants = satOutContestants.length > 0;
+
+  const teamsMap = new Map((state.teams || []).map((t) => [t.id, t]));
 
   // Format timer display
   const formatTime = (seconds: number) => {
@@ -38,18 +55,37 @@ export const TaskBriefView: React.FC = () => {
   const badge = getTypeBadge(activeTask.type);
   const BadgeIcon = badge.icon;
 
+  const displayedTitle = currentSubtask
+    ? `${activeTask.title}: Part ${subtaskIndex + 1} - ${currentSubtask.title}`
+    : activeTask.title;
+
+  const displayedBrief = currentSubtask && currentSubtask.brief
+    ? currentSubtask.brief
+    : activeTask.brief;
+
+  const timeLimit = currentSubtask?.timeLimitSeconds ?? activeTask.timeLimitSeconds;
+  const isTimed = currentSubtask ? (currentSubtask.timeLimitSeconds !== undefined) : activeTask.isTimed;
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 z-10">
-      {/* Category / Type Pill */}
-      <div className="mb-6 flex items-center gap-3">
+      {/* Category / Subtask / Type Pills */}
+      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
         <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold uppercase tracking-wider border shadow-md ${badge.color}`}>
           <BadgeIcon className="w-4 h-4" />
           {badge.label}
         </span>
-        {activeTask.isTimed && activeTask.timeLimitSeconds && (
+
+        {currentSubtask && (
+          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-bold bg-amber-950/80 text-amber-300 border border-amber-700/60 shadow-md">
+            <Layers className="w-4 h-4" />
+            <span>Part {subtaskIndex + 1}</span>
+          </span>
+        )}
+
+        {isTimed && timeLimit && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-stone-900/80 text-stone-300 border border-stone-700">
             <Clock className="w-4 h-4 text-tm-gold" />
-            Time limit: {formatTime(activeTask.timeLimitSeconds)}
+            Time limit: {formatTime(timeLimit)}
           </span>
         )}
       </div>
@@ -65,22 +101,59 @@ export const TaskBriefView: React.FC = () => {
 
         {/* Task Title */}
         <h2 className="font-serif font-bold text-2xl md:text-4xl text-[#1a110a] mb-6 tracking-tight border-b-2 border-[#ccb88e] pb-4">
-          {activeTask.title}
+          {displayedTitle}
         </h2>
 
         {/* Task Brief Content in Typewriter Typography */}
         <div className="font-typewriter text-lg md:text-2xl text-[#261e18] leading-relaxed whitespace-pre-wrap tracking-wide font-medium">
-          {activeTask.brief}
-        </div>
-
-        {/* Traditional Taskmaster Punchline */}
-        <div className="mt-8 pt-6 border-t border-[#dfcfad] flex justify-between items-center text-sm md:text-base text-[#604f3f] font-serif italic">
-          <span>All the information is on the task.</span>
-          <span className="font-bold uppercase tracking-wider text-tm-red">
-            Your time starts now.
-          </span>
+          {displayedBrief}
         </div>
       </div>
+
+      {/* Assigned Contestants vs Sat-Out Spectators */}
+      {isPartialParticipants && (
+        <div className="mt-6 w-full max-w-3xl flex flex-wrap items-center justify-between gap-4 bg-stone-900/80 backdrop-blur-md px-5 py-3 rounded-xl border border-stone-800 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-stone-400 flex items-center gap-1 uppercase tracking-wider">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              Active ({activeContestants.length}):
+            </span>
+            {activeContestants.map((c) => {
+              const team = c.teamId ? teamsMap.get(c.teamId) : null;
+              return (
+                <span
+                  key={c.id}
+                  className="px-2 py-0.5 rounded-md bg-stone-800 text-stone-200 border border-stone-700 flex items-center gap-1.5"
+                >
+                  {team && (
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: team.colorHex }}
+                      title={team.name}
+                    />
+                  )}
+                  <span>{c.name}</span>
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-stone-400 flex items-center gap-1 uppercase tracking-wider">
+              <Eye className="w-3.5 h-3.5 text-purple-400" />
+              Sat Out:
+            </span>
+            {satOutContestants.map((c) => (
+              <span
+                key={c.id}
+                className="px-2 py-0.5 rounded-md bg-purple-950/50 text-purple-300 border border-purple-800/40 italic"
+              >
+                {c.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Live Stage Timer (if timer is running or has recorded time) */}
       {(state.timer.isRunning || state.timer.seconds > 0) && (

@@ -1,14 +1,24 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { TaskType } from '../../types';
-import { X, Plus, Clock, Award, Users, Timer, ShieldAlert, Sparkles } from 'lucide-react';
+import { TaskType, SubTask, SubtaskScoringMode } from '../../types';
+import { X, Plus, Clock, Award, Users, Timer, ShieldAlert, Sparkles, Layers, Trash2 } from 'lucide-react';
 
 interface NewTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const PRESET_IDEAS = [
+interface PresetIdea {
+  title: string;
+  brief: string;
+  type: TaskType;
+  isTimed: boolean;
+  timeLimitSeconds?: number;
+  hasSubtasks?: boolean;
+  subtasks?: { title: string; brief?: string }[];
+}
+
+const PRESET_IDEAS: PresetIdea[] = [
   {
     title: 'Prize Task: Most Magnificent Item',
     brief: 'Bring in the most magnificent item. Most magnificent item wins. You have until the studio recording.',
@@ -30,6 +40,18 @@ const PRESET_IDEAS = [
     timeLimitSeconds: 300,
   },
   {
+    title: 'Multi-Part: The Grand Triathlon',
+    brief: 'Complete all three stages. Best overall performance across all stages wins. Your time starts now.',
+    type: 'filmed' as TaskType,
+    isTimed: false,
+    hasSubtasks: true,
+    subtasks: [
+      { title: 'Part 1: The Egg Sprint', brief: 'Carry the egg from A to B without touching it with your hands.' },
+      { title: 'Part 2: The Silent Limerick', brief: 'Write a five-line limerick without making any audible sound.' },
+      { title: 'Part 3: The Blind Pour', brief: 'Pour exactly 330ml of water into the jug while blindfolded.' },
+    ],
+  },
+  {
     title: 'Live Studio Task: Balance Endurance',
     brief: 'Stand on one leg with a balloon balanced on your head. Last person standing wins 5 points.',
     type: 'studio' as TaskType,
@@ -43,6 +65,11 @@ const PRESET_IDEAS = [
   },
 ];
 
+interface SubtaskDraft {
+  title: string;
+  brief: string;
+}
+
 export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) => {
   const { addTask } = useGame();
 
@@ -52,11 +79,42 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
   const [isTimed, setIsTimed] = useState(false);
   const [timeLimitMinutes, setTimeLimitMinutes] = useState(5);
 
+  // Subtask configuration
+  const [hasSubtasks, setHasSubtasks] = useState(false);
+  const [subtaskScoringMode, setSubtaskScoringMode] = useState<SubtaskScoringMode>('sum');
+  const [subtaskList, setSubtaskList] = useState<SubtaskDraft[]>([
+    { title: 'Part 1', brief: '' },
+    { title: 'Part 2', brief: '' },
+  ]);
+
   if (!isOpen) return null;
+
+  const updateSubtaskItem = (index: number, field: 'title' | 'brief', value: string) => {
+    const updated = [...subtaskList];
+    updated[index] = { ...updated[index], [field]: value };
+    setSubtaskList(updated);
+  };
+
+  const removeSubtaskItem = (index: number) => {
+    if (subtaskList.length <= 1) return;
+    setSubtaskList(subtaskList.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+
+    const generatedSubtasks: SubTask[] | undefined =
+      hasSubtasks && subtaskList.length > 0
+        ? subtaskList.map((st, idx) => ({
+            id: 'sub_' + Date.now() + '_' + idx,
+            title: st.title.trim() || `Part ${idx + 1}`,
+            brief: st.brief.trim() || `Instructions for Part ${idx + 1}. Your time starts now.`,
+            isTimed: false,
+            scores: {},
+            orderIndex: idx,
+          }))
+        : undefined;
 
     addTask({
       title: title.trim(),
@@ -64,6 +122,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
       type,
       isTimed,
       timeLimitSeconds: isTimed ? timeLimitMinutes * 60 : undefined,
+      subtasks: generatedSubtasks,
+      subtaskScoringMode: hasSubtasks ? subtaskScoringMode : undefined,
     });
 
     onClose();
@@ -72,15 +132,36 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
     setBrief('');
     setType('filmed');
     setIsTimed(false);
+    setHasSubtasks(false);
+    setSubtaskScoringMode('sum');
+    setSubtaskList([
+      { title: 'Part 1', brief: '' },
+      { title: 'Part 2', brief: '' },
+    ]);
   };
 
-  const applyPreset = (preset: typeof PRESET_IDEAS[0]) => {
+  const applyPreset = (preset: PresetIdea) => {
     setTitle(preset.title);
     setBrief(preset.brief);
     setType(preset.type);
     setIsTimed(preset.isTimed);
     if (preset.timeLimitSeconds) {
       setTimeLimitMinutes(Math.floor(preset.timeLimitSeconds / 60));
+    }
+    if (preset.hasSubtasks && preset.subtasks) {
+      setHasSubtasks(true);
+      setSubtaskList(
+        preset.subtasks.map((st, idx) => ({
+          title: st.title || `Part ${idx + 1}`,
+          brief: st.brief || '',
+        }))
+      );
+    } else {
+      setHasSubtasks(false);
+      setSubtaskList([
+        { title: 'Part 1', brief: '' },
+        { title: 'Part 2', brief: '' },
+      ]);
     }
   };
 
@@ -186,6 +267,113 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({ isOpen, onClose }) =
               onChange={(e) => setBrief(e.target.value)}
               className="w-full bg-stone-950 text-stone-100 px-3.5 py-2.5 rounded-xl border border-stone-700 focus:outline-none focus:border-tm-gold text-sm font-mono leading-relaxed"
             />
+          </div>
+
+          {/* Multi-Part / Sub-Tasks Section */}
+          <div className="p-4 rounded-xl bg-stone-950/60 border border-stone-800 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Layers className="w-5 h-5 text-tm-gold" />
+                <div>
+                  <span className="text-sm font-bold text-stone-200 block">
+                    Multi-Part Challenge (Sub-Tasks)
+                  </span>
+                  <span className="text-xs text-stone-400">
+                    Break this task into multiple stages (Part 1, Part 2, etc.)
+                  </span>
+                </div>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasSubtasks}
+                  onChange={(e) => setHasSubtasks(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-stone-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-tm-red"></div>
+              </label>
+            </div>
+
+            {hasSubtasks && (
+              <div className="space-y-3 pt-3 border-t border-stone-800/80 animate-fade-in">
+                {/* Scoring Rollup Mode */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-stone-900/80 p-2.5 rounded-xl border border-stone-800">
+                  <label className="text-xs font-bold text-stone-300">
+                    Scoring Rollup:
+                  </label>
+                  <select
+                    value={subtaskScoringMode}
+                    onChange={(e) => setSubtaskScoringMode(e.target.value as SubtaskScoringMode)}
+                    className="bg-stone-950 text-stone-200 text-xs px-2.5 py-1.5 rounded-lg border border-stone-700 focus:outline-none focus:border-tm-gold font-semibold cursor-pointer"
+                  >
+                    <option value="sum">Sum of Parts (Accumulate all points)</option>
+                    <option value="final_rank">Final Ranking (5 to 1 points based on total)</option>
+                    <option value="custom">Manual Rollup (Score master task manually)</option>
+                  </select>
+                </div>
+
+                {/* Subtask list */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-stone-400 block">
+                    Task Stages / Parts:
+                  </label>
+                  {subtaskList.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 bg-stone-950 rounded-xl border border-stone-800 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          <span className="text-[11px] font-mono font-bold text-tm-gold uppercase px-2 py-0.5 rounded bg-stone-900 border border-stone-800">
+                            Part {idx + 1}
+                          </span>
+                          <input
+                            type="text"
+                            placeholder={`Part ${idx + 1} Title`}
+                            value={item.title}
+                            onChange={(e) => updateSubtaskItem(idx, 'title', e.target.value)}
+                            className="flex-1 bg-stone-900 text-stone-100 text-xs px-3 py-1.5 rounded-lg border border-stone-700 focus:outline-none focus:border-tm-gold font-semibold"
+                          />
+                        </div>
+                        {subtaskList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeSubtaskItem(idx)}
+                            className="p-1.5 text-stone-500 hover:text-red-400 rounded-lg hover:bg-stone-900 transition-colors cursor-pointer"
+                            title="Remove part"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder={`Instructions for Part ${idx + 1} (optional)`}
+                        value={item.brief}
+                        onChange={(e) => updateSubtaskItem(idx, 'brief', e.target.value)}
+                        className="w-full bg-stone-900 text-stone-300 text-xs font-typewriter px-3 py-1.5 rounded-lg border border-stone-800 focus:outline-none focus:border-tm-gold"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add Part button */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSubtaskList([
+                      ...subtaskList,
+                      { title: `Part ${subtaskList.length + 1}`, brief: '' },
+                    ])
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 border border-dashed border-stone-700 text-stone-300 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-tm-gold" />
+                  <span>Add Another Part</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Timer Settings */}

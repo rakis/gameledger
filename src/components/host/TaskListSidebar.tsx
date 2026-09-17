@@ -51,10 +51,14 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask 
     }
   };
 
-  // Check if a task is scored for all contestants
+  // Check if a task is scored for all assigned contestants
   const isTaskCompleted = (task: Task) => {
-    if (state.contestants.length === 0) return false;
-    return state.contestants.every((c) => {
+    const activeContestants = (task.assignedContestantIds && task.assignedContestantIds.length > 0)
+      ? state.contestants.filter((c) => task.assignedContestantIds!.includes(c.id))
+      : state.contestants;
+
+    if (activeContestants.length === 0) return false;
+    return activeContestants.every((c) => {
       const entry = task.scores[c.id];
       return entry && (entry.isDisqualified || (entry.points !== undefined && entry.points !== null));
     });
@@ -93,6 +97,11 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask 
             const Icon = getTypeIcon(task.type);
             const isSelected = state.activeTaskId === task.id;
             const completed = isTaskCompleted(task);
+            const hasSubtasks = (task.subtasks?.length || 0) > 0;
+            const isPartialParticipants =
+              task.assignedContestantIds &&
+              task.assignedContestantIds.length < state.contestants.length;
+            const hasBets = task.bets && Object.keys(task.bets).length > 0;
 
             return (
               <div
@@ -114,7 +123,7 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask 
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-mono font-bold text-tm-gold uppercase">
                         T{index + 1}
                       </span>
@@ -122,6 +131,21 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask 
                       <span className="text-[10px] text-stone-400 capitalize">
                         {task.type}
                       </span>
+                      {hasSubtasks && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-950/70 border border-amber-800/60 text-amber-300 font-bold">
+                          {task.subtasks!.length} parts
+                        </span>
+                      )}
+                      {isPartialParticipants && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-stone-800 border border-stone-700 text-stone-300 font-medium">
+                          {task.assignedContestantIds!.length}/{state.contestants.length}
+                        </span>
+                      )}
+                      {hasBets && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950/70 border border-purple-800/60 text-purple-300 font-bold">
+                          {Object.keys(task.bets!).length} bet{Object.keys(task.bets!).length > 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                     <h3 className="font-semibold text-xs md:text-sm text-stone-200 truncate mt-0.5">
                       {task.title}
