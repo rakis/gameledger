@@ -65,3 +65,11 @@ When in Presentation Mode:
 - <kbd>F</kbd>: Toggle Fullscreen
 - <kbd>B</kbd>: Blackout Screen (for dramatic pauses)
 - <kbd>Esc</kbd>: Exit embedded presentation mode
+
+---
+
+## 📄 Import & Export Schema
+
+GameLedger supports backing up, restoring, and sharing entire game nights or multi-episode series via JSON.
+- **Detailed Schema Documentation**: [docs/SCHEMA.md](docs/SCHEMA.md)
+- **Formal JSON Schema**: [docs/gameledger.schema.json](docs/gameledger.schema.json)

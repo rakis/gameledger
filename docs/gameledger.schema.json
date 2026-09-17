@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rakis.github.io/gameledger/schema/gameledger.schema.json",
+  "title": "GameLedger State",
+  "description": "Schema for GameLedger Taskmaster game series import/export data files",
+  "type": "object",
+  "required": [
+    "version",
+    "seriesTitle",
+    "contestants",
+    "episodes",
+    "activeEpisodeId"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "description": "Schema version number",
+      "minimum": 1,
+      "default": 1
+    },
+    "seriesTitle": {
+      "type": "string",
+      "description": "Title of the series or game night",
+      "examples": ["Series 1: The Golden Head", "Taskmaster Christmas Special"]
+    },
+    "taskmasterName": {
+      "type": "string",
+      "description": "Name of the Taskmaster",
+      "default": "The Taskmaster"
+    },
+    "assistantName": {
+      "type": "string",
+      "description": "Name of the Assistant",
+      "default": "The Assistant"
+    },
+    "contestants": {
+      "type": "array",
+      "description": "List of participating contestants",
+      "minItems": 2,
+      "items": {
+        "$ref": "#/$defs/contestant"
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "description": "List of episodes in the series",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/episode"
+      }
+    },
+    "activeEpisodeId": {
+      "type": "string",
+      "description": "ID of the currently selected episode"
+    },
+    "activeTaskId": {
+      "type": ["string", "null"],
+      "description": "ID of the currently selected task"
+    },
+    "presentation": {
+      "$ref": "#/$defs/presentationConfig"
+    },
+    "timer": {
+      "$ref": "#/$defs/timerState"
+    },
+    "soundEnabled": {
+      "type": "boolean",
+      "description": "Whether sound effects are enabled",
+      "default": true
+    }
+  },
+  "$defs": {
+    "contestant": {
+      "type": "object",
+      "required": ["id", "name", "seatIndex", "colorHex", "avatar"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the contestant"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the contestant"
+        },
+        "seatIndex": {
+          "type": "integer",
+          "description": "0-based seating order position",
+          "minimum": 0
+        },
+        "colorHex": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "Hexadecimal color representing the contestant"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Emoji character, SVG identifier, or data URL"
+        },
+        "teamId": {
+          "type": ["string", "null"],
+          "enum": ["A", "B", null],
+          "description": "Team designation for team tasks"
+        }
+      }
+    },
+    "scoreEntry": {
+      "type": "object",
+      "required": ["contestantId", "points", "isDisqualified"],
+      "properties": {
+        "contestantId": {
+          "type": "string",
+          "description": "ID of the scored contestant"
+        },
+        "points": {
+          "type": "number",
+          "description": "Points awarded for this task attempt"
+        },
+        "isDisqualified": {
+          "type": "boolean",
+          "description": "Whether the contestant was disqualified (0 pts)"
+        },
+        "dqReason": {
+          "type": "string",
+          "description": "Host-provided explanation for disqualification"
+        },
+        "bonusPoints": {
+          "type": "number",
+          "description": "Bonus points awarded"
+        },
+        "penaltyPoints": {
+          "type": "number",
+          "description": "Penalty points deducted"
+        },
+        "timeTakenSeconds": {
+          "type": "number",
+          "description": "Duration taken to complete the task in seconds",
+          "minimum": 0
+        },
+        "attemptNote": {
+          "type": "string",
+          "description": "Description of the attempt, item brought in, or host remark"
+        },
+        "rank": {
+          "type": "integer",
+          "description": "Finishing rank within this specific task",
+          "minimum": 1
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "brief", "type", "isTimed", "scores", "orderIndex"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the task"
+        },
+        "title": {
+          "type": "string",
+          "description": "Display title of the task"
+        },
+        "brief": {
+          "type": "string",
+          "description": "Task instructions read from the wax-sealed envelope"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["prize", "filmed", "team", "studio", "tiebreak"],
+          "description": "Category of the task"
+        },
+        "isTimed": {
+          "type": "boolean",
+          "description": "Whether the task has a duration or countdown clock"
+        },
+        "timeLimitSeconds": {
+          "type": "integer",
+          "description": "Countdown duration in seconds",
+          "minimum": 1
+        },
+        "scores": {
+          "type": "object",
+          "description": "Map of contestant IDs to their ScoreEntry",
+          "additionalProperties": {
+            "$ref": "#/$defs/scoreEntry"
+          }
+        },
+        "orderIndex": {
+          "type": "integer",
+          "description": "0-based display position in the episode",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional private host notes"
+        }
+      }
+    },
+    "episode": {
+      "type": "object",
+      "required": ["id", "episodeNumber", "title", "tasks"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the episode"
+        },
+        "episodeNumber": {
+          "type": "integer",
+          "description": "Episode sequence number (1, 2, ...)",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the episode"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "Tasks belonging to this episode",
+          "items": {
+            "$ref": "#/$defs/task"
+          }
+        }
+      }
+    },
+    "presentationConfig": {
+      "type": "object",
+      "required": ["view", "revealedContestantIds", "revealedAll"],
+      "properties": {
+        "view": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "task_brief",
+            "attempts",
+            "score_reveal",
+            "episode_leaderboard",
+            "series_leaderboard",
+            "winner"
+          ],
+          "description": "Active screen view on the presentation display"
+        },
+        "revealedContestantIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of contestant IDs whose scores have been revealed"
+        },
+        "revealedAll": {
+          "type": "boolean",
+          "description": "Whether all scores have been revealed"
+        },
+        "spotlightContestantId": {
+          "type": ["string", "null"],
+          "description": "Contestant ID currently highlighted with stage spotlight"
+        },
+        "displayMessage": {
+          "type": ["string", "null"],
+          "description": "Optional broadcast ticker message shown on the presentation screen"
+        },
+        "bannerVisible": {
+          "type": "boolean",
+          "description": "Whether the bottom quote banner is displayed"
+        }
+      }
+    },
+    "timerState": {
+      "type": "object",
+      "required": ["isRunning", "seconds", "isCountdown"],
+      "properties": {
+        "isRunning": { "type": "boolean" },
+        "seconds": { "type": "integer", "minimum": 0 },
+        "initialLimit": { "type": ["integer", "null"] },
+        "isCountdown": { "type": "boolean" }
+      }
+    }
+  }
+}
