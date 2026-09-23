@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { DEFAULT_TEAMS } from '../../data/demoData';
-import { SubtaskScoringMode } from '../../types';
+import { SubtaskScoringMode, ScoreEntry } from '../../types';
 import {
   Clock,
   Play,
@@ -19,6 +19,8 @@ import {
   Coins,
   CheckCircle2,
   Printer,
+  Save,
+  Check,
 } from 'lucide-react';
 
 interface TaskScorerPanelProps {
@@ -31,9 +33,9 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
     updateTask,
     state,
     setScore,
+    setTaskScores,
     quickRankTask,
     toggleDQ,
-    autoScoreByRanking,
     setTaskAssignedContestants,
     toggleContestantSitOut,
     addSubTask,
@@ -54,6 +56,14 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
   const [editingBrief, setEditingBrief] = useState(false);
   const [briefInput, setBriefInput] = useState(activeTask?.brief || '');
   const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null);
+
+  // Draft state & save feedback for reliable score editing
+  const [draftPoints, setDraftPoints] = useState<{ [contestantId: string]: string }>({});
+  const [draftNotes, setDraftNotes] = useState<{ [contestantId: string]: string }>({});
+  const [draftTimes, setDraftTimes] = useState<{ [contestantId: string]: string }>({});
+  const [autoSyncSubtask, setAutoSyncSubtask] = useState<boolean>(true);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const [isSavedFeedbackActive, setIsSavedFeedbackActive] = useState<boolean>(false);
 
   if (!activeTask) {
     return (
@@ -95,6 +105,62 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
     setEditingBrief(false);
   };
 
+  const triggerSaveFeedback = () => {
+    setIsSavedFeedbackActive(true);
+    const now = new Date();
+    setLastSavedTime(
+      now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    );
+    setTimeout(() => {
+      setIsSavedFeedbackActive(false);
+    }, 3000);
+  };
+
+  const handleUpdateAllScores = () => {
+    if (!activeTask) return;
+
+    const updates: Record<string, Partial<ScoreEntry>> = {};
+    activeContestants.forEach((c) => {
+      const currentScore = currentSubtask
+        ? currentSubtask.scores[c.id] || { contestantId: c.id, points: 0, isDisqualified: false }
+        : activeTask.scores[c.id] || { contestantId: c.id, points: 0, isDisqualified: false };
+
+      const isDQ = currentScore.isDisqualified;
+
+      let pts = isDQ ? 0 : currentScore.points;
+      if (!isDQ && draftPoints[c.id] !== undefined) {
+        const parsed = parseInt(draftPoints[c.id], 10);
+        pts = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      }
+
+      let timeSec = currentScore.timeTakenSeconds;
+      if (draftTimes[c.id] !== undefined) {
+        const parsedTime = draftTimes[c.id] === '' ? undefined : Number(draftTimes[c.id]);
+        timeSec = isNaN(parsedTime as number) ? undefined : parsedTime;
+      }
+
+      const noteVal = draftNotes[c.id] !== undefined ? draftNotes[c.id] : (currentScore.attemptNote || '');
+      const dqVal = isDQ ? (customDQReason[c.id] || currentScore.dqReason || 'Disqualified by Taskmaster') : undefined;
+
+      updates[c.id] = {
+        points: pts,
+        isDisqualified: isDQ,
+        dqReason: dqVal,
+        attemptNote: noteVal,
+        timeTakenSeconds: timeSec,
+      };
+    });
+
+    setTaskScores(activeTask.id, updates, currentSubtask?.id, currentSubtask ? autoSyncSubtask : false);
+
+    setDraftPoints({});
+    setDraftNotes({});
+    setDraftTimes({});
+
+    triggerSound('reveal');
+    triggerSaveFeedback();
+  };
+
   // Rank contestants automatically by time taken (fastest wins: lowest time = 5 pts)
   const autoScoreByTime = () => {
     const scoredContestants = activeContestants
@@ -113,38 +179,35 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
       return;
     }
 
-    if (currentSubtask) {
-      const pointScale = [5, 4, 3, 2, 1];
-      scoredContestants.forEach((c, idx) => {
-        setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
-          points: idx < pointScale.length ? pointScale[idx] : 1,
-          rank: idx + 1,
-          isDisqualified: false,
-        });
-      });
-    } else {
-      autoScoreByRanking(activeTask.id, scoredContestants.map((c) => c.id), true);
-    }
+    const pointScale = [5, 4, 3, 2, 1];
+    const updates: Record<string, Partial<ScoreEntry>> = {};
+    scoredContestants.forEach((c, idx) => {
+      updates[c.id] = {
+        points: idx < pointScale.length ? pointScale[idx] : 1,
+        rank: idx + 1,
+        isDisqualified: false,
+      };
+    });
+
+    setTaskScores(activeTask.id, updates, currentSubtask?.id, currentSubtask ? autoSyncSubtask : false);
     triggerSound('reveal');
+    triggerSaveFeedback();
   };
 
   // Quick award team points to all members of a team
   const awardTeamPoints = (teamId: string, pts: number) => {
     const teamMembers = activeContestants.filter((c) => c.teamId === teamId);
+    if (teamMembers.length === 0) return;
+    const updates: Record<string, Partial<ScoreEntry>> = {};
     teamMembers.forEach((member) => {
-      if (currentSubtask) {
-        setSubtaskScore(activeTask.id, currentSubtask.id, member.id, {
-          points: pts,
-          isDisqualified: false,
-        });
-      } else {
-        setScore(activeTask.id, member.id, {
-          points: pts,
-          isDisqualified: false,
-        });
-      }
+      updates[member.id] = {
+        points: pts,
+        isDisqualified: false,
+      };
     });
+    setTaskScores(activeTask.id, updates, currentSubtask?.id, currentSubtask ? autoSyncSubtask : false);
     triggerSound('reveal');
+    triggerSaveFeedback();
   };
 
   return (
@@ -175,6 +238,29 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
 
           {/* Actions toolbar */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Primary Update Task Scores Button */}
+            <button
+              onClick={handleUpdateAllScores}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                isSavedFeedbackActive
+                  ? 'bg-emerald-600 text-white shadow-emerald-900/50 scale-105'
+                  : 'bg-tm-red hover:bg-tm-redBright text-white shadow-gold hover:scale-[1.02]'
+              }`}
+              title="Save, recalculate ranks, and broadcast all scores to stage"
+            >
+              {isSavedFeedbackActive ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Scores Updated ✓</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5 text-tm-goldLight" />
+                  <span>Update Task Scores</span>
+                </>
+              )}
+            </button>
+
             {activeTask.isTimed && (
               <button
                 onClick={autoScoreByTime}
@@ -188,7 +274,10 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
 
             {subtasks.length > 0 && (
               <button
-                onClick={() => syncSubtaskScoresToParent(activeTask.id)}
+                onClick={() => {
+                  syncSubtaskScoresToParent(activeTask.id);
+                  triggerSaveFeedback();
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-tm-gold hover:bg-amber-400 text-stone-950 text-xs font-bold shadow-md transition-colors cursor-pointer"
                 title="Roll up all subtask scores into master task"
               >
@@ -536,16 +625,42 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
 
       {/* Active Contestants Scoring Matrix Table */}
       <div className="bg-stone-900/90 border border-stone-800 rounded-2xl overflow-hidden shadow-lg">
-        <div className="px-5 py-3 border-b border-stone-800 bg-stone-950/60 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-stone-800 bg-stone-950/60 flex items-center justify-between gap-3 flex-wrap">
           <h3 className="font-serif font-bold text-base text-stone-100 flex items-center gap-2">
             <Award className="w-4 h-4 text-tm-gold" />
             <span>
               {currentSubtask ? `Scoring: ${currentSubtask.title}` : 'Active Contestants Scoring Matrix'}
             </span>
           </h3>
-          <span className="text-xs text-stone-400">
-            {activeContestants.length} Active Participants
-          </span>
+
+          <div className="flex items-center gap-3">
+            {lastSavedTime && (
+              <span className="text-[11px] text-stone-400 hidden sm:inline-block">
+                Last updated: <strong className="text-stone-300 font-mono">{lastSavedTime}</strong>
+              </span>
+            )}
+            <button
+              onClick={handleUpdateAllScores}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                isSavedFeedbackActive
+                  ? 'bg-emerald-600 text-white shadow-emerald-900/50 scale-105'
+                  : 'bg-tm-gold hover:bg-amber-400 text-stone-950 font-black hover:scale-[1.02]'
+              }`}
+              title="Save all changes, recalculate ranks, and broadcast to TV"
+            >
+              {isSavedFeedbackActive ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Scores Saved ✓</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Update Task Scores</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="divide-y divide-stone-800">
@@ -606,9 +721,18 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                               isDisqualified: false,
                               rank: Math.max(1, 6 - pts),
                             });
+                            if (autoSyncSubtask) {
+                              setTimeout(() => syncSubtaskScoresToParent(activeTask.id), 0);
+                            }
                           } else {
                             quickRankTask(activeTask.id, c.id, pts);
                           }
+                          setDraftPoints((prev) => {
+                            const next = { ...prev };
+                            delete next[c.id];
+                            return next;
+                          });
+                          triggerSaveFeedback();
                         }}
                         className={`w-9 h-9 rounded-xl font-mono font-bold text-sm transition-all cursor-pointer ${
                           isSelected
@@ -628,21 +752,46 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                   <div className="flex items-center gap-1 ml-1 bg-stone-950 px-2 py-1 rounded-xl border border-stone-800">
                     <span className="text-[10px] uppercase text-stone-500 font-bold">PTS:</span>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       disabled={isDQ}
-                      value={isDQ ? 0 : score.points}
+                      value={
+                        isDQ
+                          ? '0'
+                          : draftPoints[c.id] !== undefined
+                          ? draftPoints[c.id]
+                          : String(score.points ?? 0)
+                      }
                       onChange={(e) => {
-                        const val = Number(e.target.value);
-                        if (currentSubtask) {
-                          setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
-                            points: val,
-                            isDisqualified: false,
-                          });
-                        } else {
-                          setScore(activeTask.id, c.id, {
-                            points: val,
-                            isDisqualified: false,
-                          });
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setDraftPoints((prev) => ({ ...prev, [c.id]: val }));
+                      }}
+                      onBlur={() => {
+                        if (draftPoints[c.id] !== undefined) {
+                          const parsed = parseInt(draftPoints[c.id], 10);
+                          const pts = isNaN(parsed) ? 0 : Math.max(0, parsed);
+                          if (currentSubtask) {
+                            setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
+                              points: pts,
+                              isDisqualified: false,
+                            });
+                            if (autoSyncSubtask) {
+                              setTimeout(() => syncSubtaskScoresToParent(activeTask.id), 0);
+                            }
+                          } else {
+                            setScore(activeTask.id, c.id, {
+                              points: pts,
+                              isDisqualified: false,
+                            });
+                          }
+                          triggerSaveFeedback();
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleUpdateAllScores();
                         }
                       }}
                       className="w-12 bg-transparent text-stone-100 font-mono font-bold text-sm text-center focus:outline-none disabled:opacity-40"
@@ -656,11 +805,20 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                         setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
                           isDisqualified: !isDQ,
                           points: isDQ ? 1 : 0,
-                          dqReason: isDQ ? undefined : 'Disqualified in subtask',
+                          dqReason: isDQ ? undefined : (customDQReason[c.id] || 'Disqualified in subtask'),
                         });
+                        if (autoSyncSubtask) {
+                          setTimeout(() => syncSubtaskScoresToParent(activeTask.id), 0);
+                        }
                       } else {
                         toggleDQ(activeTask.id, c.id, customDQReason[c.id]);
                       }
+                      setDraftPoints((prev) => {
+                        const next = { ...prev };
+                        delete next[c.id];
+                        return next;
+                      });
+                      triggerSaveFeedback();
                     }}
                     className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isDQ
@@ -681,17 +839,27 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                     <input
                       type="number"
                       placeholder="Time (sec)"
-                      value={score.timeTakenSeconds ?? ''}
+                      value={
+                        draftTimes[c.id] !== undefined
+                          ? draftTimes[c.id]
+                          : (score.timeTakenSeconds ?? '')
+                      }
                       onChange={(e) => {
-                        const val = e.target.value ? Number(e.target.value) : undefined;
-                        if (currentSubtask) {
-                          setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
-                            timeTakenSeconds: val,
-                          });
-                        } else {
-                          setScore(activeTask.id, c.id, {
-                            timeTakenSeconds: val,
-                          });
+                        const val = e.target.value;
+                        setDraftTimes((prev) => ({ ...prev, [c.id]: val }));
+                      }}
+                      onBlur={() => {
+                        if (draftTimes[c.id] !== undefined) {
+                          const val = draftTimes[c.id] === '' ? undefined : Number(draftTimes[c.id]);
+                          if (currentSubtask) {
+                            setSubtaskScore(activeTask.id, currentSubtask.id, c.id, {
+                              timeTakenSeconds: val,
+                            });
+                          } else {
+                            setScore(activeTask.id, c.id, {
+                              timeTakenSeconds: val,
+                            });
+                          }
                         }
                       }}
                       className="w-full bg-transparent text-stone-200 text-xs font-mono focus:outline-none"
@@ -709,6 +877,12 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                               timeTakenSeconds: state.timer.seconds,
                             });
                           }
+                          setDraftTimes((prev) => {
+                            const next = { ...prev };
+                            delete next[c.id];
+                            return next;
+                          });
+                          triggerSaveFeedback();
                         }}
                         title="Stamp current timer seconds"
                         className="text-[10px] px-1.5 py-0.5 rounded bg-stone-800 text-tm-gold hover:bg-stone-700 font-bold cursor-pointer"
@@ -722,22 +896,37 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
                     <input
                       type="text"
                       placeholder={isDQ ? 'Reason for DQ...' : 'Attempt notes or description...'}
-                      value={isDQ ? (score.dqReason || '') : (score.attemptNote || '')}
+                      value={
+                        isDQ
+                          ? (score.dqReason || '')
+                          : (draftNotes[c.id] !== undefined ? draftNotes[c.id] : (score.attemptNote || ''))
+                      }
                       onChange={(e) => {
                         const val = e.target.value;
-                        if (currentSubtask) {
-                          if (isDQ) {
+                        if (isDQ) {
+                          setCustomDQReason((prev) => ({ ...prev, [c.id]: val }));
+                          if (currentSubtask) {
                             setSubtaskScore(activeTask.id, currentSubtask.id, c.id, { dqReason: val });
                           } else {
-                            setSubtaskScore(activeTask.id, currentSubtask.id, c.id, { attemptNote: val });
+                            setScore(activeTask.id, c.id, { dqReason: val });
                           }
                         } else {
-                          if (isDQ) {
-                            setCustomDQReason({ ...customDQReason, [c.id]: val });
-                            setScore(activeTask.id, c.id, { dqReason: val });
+                          setDraftNotes((prev) => ({ ...prev, [c.id]: val }));
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!isDQ && draftNotes[c.id] !== undefined) {
+                          if (currentSubtask) {
+                            setSubtaskScore(activeTask.id, currentSubtask.id, c.id, { attemptNote: draftNotes[c.id] });
                           } else {
-                            setScore(activeTask.id, c.id, { attemptNote: val });
+                            setScore(activeTask.id, c.id, { attemptNote: draftNotes[c.id] });
                           }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleUpdateAllScores();
                         }
                       }}
                       className={`w-full text-xs px-3 py-1.5 rounded-xl border focus:outline-none ${
@@ -751,6 +940,64 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
               </div>
             );
           })}
+        </div>
+
+        {/* Bottom Action & Status Bar */}
+        <div className="px-5 py-3.5 bg-stone-950/90 border-t border-stone-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-xs text-stone-400 flex-wrap">
+            <span className="font-medium text-stone-300">
+              {activeContestants.length} Active Participants
+            </span>
+            <span className="text-stone-600">•</span>
+            <span>
+              Total Assigned Points:{' '}
+              <strong className="text-tm-gold font-mono">
+                {activeContestants.reduce((sum, c) => {
+                  const sc = currentSubtask ? currentSubtask.scores[c.id] : activeTask.scores[c.id];
+                  return sum + (sc && !sc.isDisqualified ? Number(sc.points || 0) : 0);
+                }, 0)}{' '}
+                pts
+              </strong>
+            </span>
+            {currentSubtask && (
+              <>
+                <span className="text-stone-600">•</span>
+                <label className="flex items-center gap-1.5 text-amber-300 font-semibold cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoSyncSubtask}
+                    onChange={(e) => setAutoSyncSubtask(e.target.checked)}
+                    className="rounded bg-stone-900 border-stone-700 text-tm-gold focus:ring-0 cursor-pointer"
+                  />
+                  <span>Auto-sync with Master Task Standings</span>
+                </label>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              onClick={handleUpdateAllScores}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs md:text-sm transition-all shadow-md cursor-pointer ${
+                isSavedFeedbackActive
+                  ? 'bg-emerald-600 text-white shadow-emerald-900/50 scale-105'
+                  : 'bg-tm-red hover:bg-tm-redBright text-white shadow-gold hover:scale-[1.02]'
+              }`}
+              title="Save all changes, recalculate ranks, and broadcast to TV"
+            >
+              {isSavedFeedbackActive ? (
+                <>
+                  <Check className="w-4 h-4 text-white" />
+                  <span>Scores Updated & Broadcast to Stage ✓</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 text-tm-goldLight" />
+                  <span>Update Task Scores</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

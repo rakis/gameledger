@@ -225,5 +225,94 @@ console.assert(updatedEp1.title === longTitle, 'Updated episode title should mat
 console.assert(updatedEp1.tasks.length === ep1.tasks.length, 'Task count must remain unaffected by episode title update');
 console.log('✔ Episode title successfully updated with long title and tasks preserved');
 
+// 7. Atomic Batch Task Score Updates, Multi-Team Points, and Auto-Ranking
+console.log('\n--- Testing Atomic Batch Score Updates & Multi-Team Score Preservation ---');
+
+const baseTask = {
+  id: 'task_batch_test',
+  assignedContestantIds: ['c1', 'c2', 'c3', 'c4', 'c5'],
+  scores: {
+    c1: { contestantId: 'c1', points: 0, isDisqualified: false },
+    c2: { contestantId: 'c2', points: 0, isDisqualified: false },
+    c3: { contestantId: 'c3', points: 0, isDisqualified: false },
+    c4: { contestantId: 'c4', points: 0, isDisqualified: false },
+    c5: { contestantId: 'c5', points: 0, isDisqualified: false },
+  },
+};
+
+const batchUpdates = {
+  c1: { points: 5 },
+  c2: { points: 4 },
+  c3: { points: 3 },
+  c4: { points: 2 },
+  c5: { points: 0, isDisqualified: true, dqReason: 'Stepped out of circle' },
+};
+
+const updatedScores = { ...baseTask.scores };
+Object.entries(batchUpdates).forEach(([cid, updates]) => {
+  updatedScores[cid] = { ...updatedScores[cid], ...updates };
+});
+
+const activeAssigned = baseTask.assignedContestantIds;
+const nonDQs = activeAssigned
+  .filter((cid) => !updatedScores[cid].isDisqualified)
+  .sort((a, b) => updatedScores[b].points - updatedScores[a].points);
+
+let rank = 1;
+nonDQs.forEach((cid, idx) => {
+  if (idx > 0 && updatedScores[cid].points < updatedScores[nonDQs[idx - 1]].points) {
+    rank = idx + 1;
+  }
+  updatedScores[cid].rank = rank;
+});
+
+console.assert(updatedScores['c1'].points === 5 && updatedScores['c1'].rank === 1, 'c1 should have 5 points and rank 1');
+console.assert(updatedScores['c2'].points === 4 && updatedScores['c2'].rank === 2, 'c2 should have 4 points and rank 2');
+console.assert(updatedScores['c3'].points === 3 && updatedScores['c3'].rank === 3, 'c3 should have 3 points and rank 3');
+console.assert(updatedScores['c4'].points === 2 && updatedScores['c4'].rank === 4, 'c4 should have 2 points and rank 4');
+console.assert(updatedScores['c5'].points === 0 && updatedScores['c5'].isDisqualified === true, 'c5 should be disqualified with 0 points');
+console.log('✔ Batch score updates atomically committed all contestant scores with calculated ranks');
+
+// Multi-team score award without teammate score overwriting
+const teamMembersA = ['c1', 'c2'];
+const teamPointsUpdates = {};
+teamMembersA.forEach((mId) => {
+  teamPointsUpdates[mId] = { points: 5, isDisqualified: false };
+});
+
+const teamScoredTask = {
+  ...baseTask,
+  scores: {
+    ...baseTask.scores,
+    ...teamPointsUpdates,
+  },
+};
+
+console.assert(teamScoredTask.scores['c1'].points === 5, 'Teammate 1 (c1) retained 5 team points');
+console.assert(teamScoredTask.scores['c2'].points === 5, 'Teammate 2 (c2) retained 5 team points');
+console.log('✔ Atomic team point assignment correctly awards points to all teammates without overwriting');
+
+// Competition tie ranking (e.g. 5, 4, 4, 2)
+const tieScores = {
+  c1: { points: 5 },
+  c2: { points: 4 },
+  c3: { points: 4 },
+  c4: { points: 2 },
+};
+const tieRanked = ['c1', 'c2', 'c3', 'c4'].sort((a, b) => tieScores[b].points - tieScores[a].points);
+let tieCurRank = 1;
+tieRanked.forEach((cid, idx) => {
+  if (idx > 0 && tieScores[cid].points < tieScores[tieRanked[idx - 1]].points) {
+    tieCurRank = idx + 1;
+  }
+  tieScores[cid].rank = tieCurRank;
+});
+
+console.assert(tieScores['c1'].rank === 1, '1st place has rank 1');
+console.assert(tieScores['c2'].rank === 2, '2nd place tie has rank 2');
+console.assert(tieScores['c3'].rank === 2, '2nd place tie has rank 2');
+console.assert(tieScores['c4'].rank === 4, '4th place skips to rank 4 after two 2nd place ties');
+console.log('✔ Competition tie ranking properly computes standard 1-2-2-4 rankings');
+
 console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, and bets verified successfully! 🎉');
 

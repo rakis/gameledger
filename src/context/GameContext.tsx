@@ -87,9 +87,15 @@ interface GameContextType {
 
   // Scoring actions
   setScore: (taskId: string, contestantId: string, updates: Partial<ScoreEntry>) => void;
-  quickRankTask: (taskId: string, contestantId: string, rankPoints: number) => void;
-  toggleDQ: (taskId: string, contestantId: string, dqReason?: string) => void;
-  autoScoreByRanking: (taskId: string, orderedContestantIds: string[], descending?: boolean) => void;
+  setTaskScores: (
+    taskId: string,
+    scores: Record<string, Partial<ScoreEntry>>,
+    subtaskId?: string | null,
+    syncToMaster?: boolean
+  ) => void;
+  quickRankTask: (taskId: string, contestantId: string, rankPoints: number, subtaskId?: string | null) => void;
+  toggleDQ: (taskId: string, contestantId: string, dqReason?: string, subtaskId?: string | null) => void;
+  autoScoreByRanking: (taskId: string, orderedContestantIds: string[], descending?: boolean, subtaskId?: string | null) => void;
 
   // Presentation / Stage Director actions
   setPresentationView: (view: PresentationViewType) => void;
@@ -132,6 +138,101 @@ const ensureStateDefaults = (s: GameLedgerState): GameLedgerState => {
   };
 };
 
+export const calculateParentScoresFromSubtasks = (
+  task: Task,
+  defaultContestantIds: string[]
+): Record<string, ScoreEntry> => {
+  const mode = task.subtaskScoringMode || 'sum';
+  const assignedIds = task.assignedContestantIds && task.assignedContestantIds.length > 0
+    ? task.assignedContestantIds
+    : defaultContestantIds;
+  const parentScores: Record<string, ScoreEntry> = { ...task.scores };
+
+  if (mode === 'sum') {
+    assignedIds.forEach((cid) => {
+      let totalPts = 0;
+      let hasDQ = false;
+      const notes: string[] = [];
+      task.subtasks?.forEach((st) => {
+        const sc = st.scores[cid];
+        if (sc) {
+          if (sc.isDisqualified) {
+            hasDQ = true;
+          } else {
+            totalPts += Number(sc.points || 0);
+          }
+          if (sc.attemptNote) notes.push(`${st.title}: ${sc.attemptNote}`);
+        }
+      });
+      parentScores[cid] = {
+        contestantId: cid,
+        points: hasDQ ? 0 : totalPts,
+        isDisqualified: hasDQ,
+        dqReason: hasDQ ? 'Disqualified in subtask' : undefined,
+        attemptNote: notes.length > 0 ? notes.join(' | ') : undefined,
+      };
+    });
+
+    // Assign ranks
+    const sorted = assignedIds
+      .filter((cid) => !parentScores[cid]?.isDisqualified)
+      .sort((a, b) => (parentScores[b]?.points || 0) - (parentScores[a]?.points || 0));
+    let curRank = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && (parentScores[sorted[i]]?.points || 0) < (parentScores[sorted[i - 1]]?.points || 0)) {
+        curRank = i + 1;
+      }
+      if (parentScores[sorted[i]]) {
+        parentScores[sorted[i]].rank = curRank;
+      }
+    }
+  } else if (mode === 'final_rank') {
+    const pointScale = [5, 4, 3, 2, 1];
+    const contestantSums: Record<string, number> = {};
+    const dqs = new Set<string>();
+
+    assignedIds.forEach((cid) => {
+      let sum = 0;
+      task.subtasks?.forEach((st) => {
+        const sc = st.scores[cid];
+        if (sc) {
+          if (sc.isDisqualified) dqs.add(cid);
+          else sum += Number(sc.points || 0);
+        }
+      });
+      contestantSums[cid] = sum;
+    });
+
+    const nonDQs = assignedIds.filter((cid) => !dqs.has(cid));
+    const sorted = [...nonDQs].sort((a, b) => (contestantSums[b] || 0) - (contestantSums[a] || 0));
+
+    let curRank = 1;
+    sorted.forEach((cid, idx) => {
+      if (idx > 0 && (contestantSums[cid] || 0) < (contestantSums[sorted[idx - 1]] || 0)) {
+        curRank = idx + 1;
+      }
+      const pts = pointScale[curRank - 1] ?? 1;
+      parentScores[cid] = {
+        contestantId: cid,
+        points: pts,
+        rank: curRank,
+        isDisqualified: false,
+      };
+    });
+
+    dqs.forEach((cid) => {
+      parentScores[cid] = {
+        contestantId: cid,
+        points: 0,
+        isDisqualified: true,
+        dqReason: 'Disqualified in subtask',
+      };
+    });
+  }
+
+  return parentScores;
+};
+
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -155,50 +256,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return ensureStateDefaults(INITIAL_DEMO_STATE);
   });
 
+  const stateRef = useRef<GameLedgerState>(state);
+  stateRef.current = state;
   const channelRef = useRef<BroadcastChannel | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
-
-  // Initialize BroadcastChannel
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
-
-    const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-    channelRef.current = channel;
-
-    channel.onmessage = (event: MessageEvent<BroadcastMessage>) => {
-      const msg = event.data;
-      if (!msg) return;
-
-      if (msg.type === 'STATE_UPDATE') {
-        setState(ensureStateDefaults(msg.state));
-      } else if (msg.type === 'AUDIO_TRIGGER') {
-        if (state.soundEnabled) {
-          playAudioCue(msg.sound);
-        }
-      } else if (msg.type === 'CONFETTI_BURST') {
-        runConfettiAnimation();
-      }
-    };
-
-    return () => {
-      channel.close();
-      channelRef.current = null;
-    };
-  }, [state.soundEnabled]);
-
-  // Persist state to LocalStorage and broadcast changes (Host only)
-  const broadcastState = useCallback((newState: GameLedgerState) => {
-    setState(newState);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      channelRef.current?.postMessage({
-        type: 'STATE_UPDATE',
-        state: newState,
-      } as BroadcastMessage);
-    } catch (e) {
-      console.error('Storage or broadcast error', e);
-    }
-  }, []);
 
   // Audio helper
   const playAudioCue = useCallback((sound: SoundType) => {
@@ -224,16 +285,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const triggerSound = useCallback((sound: SoundType) => {
-    if (state.soundEnabled) {
-      playAudioCue(sound);
-    }
-    channelRef.current?.postMessage({
-      type: 'AUDIO_TRIGGER',
-      sound,
-    } as BroadcastMessage);
-  }, [state.soundEnabled, playAudioCue]);
-
   // Confetti helper
   const runConfettiAnimation = useCallback(async () => {
     try {
@@ -248,6 +299,68 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Confetti effect failed to load', e);
     }
   }, []);
+
+  // Initialize BroadcastChannel
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
+
+    const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+    channelRef.current = channel;
+
+    channel.onmessage = (event: MessageEvent<BroadcastMessage>) => {
+      const msg = event.data;
+      if (!msg) return;
+
+      if (msg.type === 'STATE_UPDATE') {
+        const next = ensureStateDefaults(msg.state);
+        stateRef.current = next;
+        setState(next);
+      } else if (msg.type === 'AUDIO_TRIGGER') {
+        if (stateRef.current.soundEnabled) {
+          playAudioCue(msg.sound);
+        }
+      } else if (msg.type === 'CONFETTI_BURST') {
+        runConfettiAnimation();
+      }
+    };
+
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [playAudioCue, runConfettiAnimation]);
+
+  // Persist state to LocalStorage and broadcast changes (Host only) using functional updates
+  const updateAndBroadcastState = useCallback((updater: (prev: GameLedgerState) => GameLedgerState) => {
+    setState((prev) => {
+      const next = ensureStateDefaults(updater(prev));
+      stateRef.current = next;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        channelRef.current?.postMessage({
+          type: 'STATE_UPDATE',
+          state: next,
+        } as BroadcastMessage);
+      } catch (e) {
+        console.error('Storage or broadcast error', e);
+      }
+      return next;
+    });
+  }, []);
+
+  const broadcastState = useCallback((newState: GameLedgerState) => {
+    updateAndBroadcastState(() => newState);
+  }, [updateAndBroadcastState]);
+
+  const triggerSound = useCallback((sound: SoundType) => {
+    if (stateRef.current.soundEnabled) {
+      playAudioCue(sound);
+    }
+    channelRef.current?.postMessage({
+      type: 'AUDIO_TRIGGER',
+      sound,
+    } as BroadcastMessage);
+  }, [playAudioCue]);
 
   const triggerConfetti = useCallback(() => {
     runConfettiAnimation();
@@ -611,55 +724,204 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state, activeEpisode, broadcastState]);
 
   // Scoring actions
+  const setTaskScores = useCallback((
+    taskId: string,
+    scores: Record<string, Partial<ScoreEntry>>,
+    subtaskId?: string | null,
+    syncToMaster: boolean = false
+  ) => {
+    updateAndBroadcastState((prev) => {
+      const currentContestantIds = prev.contestants.map((c) => c.id);
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+
+          if (subtaskId && t.subtasks && t.subtasks.length > 0) {
+            const updatedSubtasks = t.subtasks.map((st) => {
+              if (st.id !== subtaskId) return st;
+              const newSubScores = { ...st.scores };
+              Object.entries(scores).forEach(([cid, entryUpdates]) => {
+                const currentEntry = newSubScores[cid] || {
+                  contestantId: cid,
+                  points: 0,
+                  isDisqualified: false,
+                };
+                newSubScores[cid] = {
+                  ...currentEntry,
+                  ...entryUpdates,
+                  points: entryUpdates.isDisqualified ? 0 : (entryUpdates.points ?? currentEntry.points ?? 0),
+                };
+              });
+
+              // Recalculate ranks within subtask
+              const assigned = t.assignedContestantIds && t.assignedContestantIds.length > 0
+                ? t.assignedContestantIds
+                : currentContestantIds;
+              const ranked = assigned
+                .filter((cid) => !newSubScores[cid]?.isDisqualified)
+                .sort((a, b) => (newSubScores[b]?.points || 0) - (newSubScores[a]?.points || 0));
+              let curRank = 1;
+              for (let i = 0; i < ranked.length; i++) {
+                if (i > 0 && (newSubScores[ranked[i]]?.points || 0) < (newSubScores[ranked[i - 1]]?.points || 0)) {
+                  curRank = i + 1;
+                }
+                if (newSubScores[ranked[i]]) {
+                  newSubScores[ranked[i]].rank = curRank;
+                }
+              }
+
+              return { ...st, scores: newSubScores };
+            });
+
+            let newParentScores = t.scores;
+            if (syncToMaster) {
+              const updatedTempTask = { ...t, subtasks: updatedSubtasks };
+              newParentScores = calculateParentScoresFromSubtasks(updatedTempTask, currentContestantIds);
+            }
+
+            return {
+              ...t,
+              subtasks: updatedSubtasks,
+              scores: newParentScores,
+            };
+          }
+
+          // Main task score updates
+          const newScores = { ...t.scores };
+          Object.entries(scores).forEach(([cid, entryUpdates]) => {
+            const currentEntry = newScores[cid] || {
+              contestantId: cid,
+              points: 0,
+              isDisqualified: false,
+            };
+            newScores[cid] = {
+              ...currentEntry,
+              ...entryUpdates,
+              points: entryUpdates.isDisqualified ? 0 : (entryUpdates.points ?? currentEntry.points ?? 0),
+            };
+          });
+
+          // Recalculate ranks across active contestants
+          const assigned = t.assignedContestantIds && t.assignedContestantIds.length > 0
+            ? t.assignedContestantIds
+            : currentContestantIds;
+          const ranked = assigned
+            .filter((cid) => !newScores[cid]?.isDisqualified)
+            .sort((a, b) => (newScores[b]?.points || 0) - (newScores[a]?.points || 0));
+          let curRank = 1;
+          for (let i = 0; i < ranked.length; i++) {
+            if (i > 0 && (newScores[ranked[i]]?.points || 0) < (newScores[ranked[i - 1]]?.points || 0)) {
+              curRank = i + 1;
+            }
+            if (newScores[ranked[i]]) {
+              newScores[ranked[i]].rank = curRank;
+            }
+          }
+
+          return { ...t, scores: newScores };
+        }),
+      }));
+
+      return { ...prev, episodes: updatedEpisodes };
+    });
+  }, [updateAndBroadcastState]);
+
   const setScore = useCallback((taskId: string, contestantId: string, updates: Partial<ScoreEntry>) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const currentEntry = t.scores[contestantId] || {
-          contestantId,
-          points: 0,
+    setTaskScores(taskId, { [contestantId]: updates }, null, false);
+  }, [setTaskScores]);
+
+  const setSubtaskScore = useCallback((taskId: string, subtaskId: string, contestantId: string, updates: Partial<ScoreEntry>) => {
+    setTaskScores(taskId, { [contestantId]: updates }, subtaskId, false);
+  }, [setTaskScores]);
+
+  const quickRankTask = useCallback((taskId: string, contestantId: string, rankPoints: number, subtaskId?: string | null) => {
+    setTaskScores(
+      taskId,
+      {
+        [contestantId]: {
+          points: rankPoints,
           isDisqualified: false,
-        };
-        return {
-          ...t,
-          scores: {
-            ...t.scores,
-            [contestantId]: { ...currentEntry, ...updates },
-          },
-        };
-      }),
-    }));
-
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
-
-  const quickRankTask = useCallback((taskId: string, contestantId: string, rankPoints: number) => {
-    setScore(taskId, contestantId, {
-      points: rankPoints,
-      isDisqualified: false,
-      rank: Math.max(1, 6 - rankPoints),
-    });
+          rank: Math.max(1, 6 - rankPoints),
+        },
+      },
+      subtaskId,
+      Boolean(subtaskId)
+    );
     triggerSound('reveal');
-  }, [setScore, triggerSound]);
+  }, [setTaskScores, triggerSound]);
 
-  const toggleDQ = useCallback((taskId: string, contestantId: string, dqReason?: string) => {
-    const currentTask = activeEpisode?.tasks.find((t) => t.id === taskId);
-    const isCurrentlyDQ = currentTask?.scores[contestantId]?.isDisqualified ?? false;
+  const toggleDQ = useCallback((taskId: string, contestantId: string, dqReason?: string, subtaskId?: string | null) => {
+    let wasDQ = false;
+    updateAndBroadcastState((prev) => {
+      const ep = prev.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
+      const task = ep?.tasks.find((t) => t.id === taskId);
+      if (!task) return prev;
 
-    setScore(taskId, contestantId, {
-      isDisqualified: !isCurrentlyDQ,
-      points: !isCurrentlyDQ ? 0 : 1,
-      dqReason: !isCurrentlyDQ ? (dqReason || 'Disqualified by Taskmaster') : undefined,
+      if (subtaskId && task.subtasks) {
+        const st = task.subtasks.find((s) => s.id === subtaskId);
+        wasDQ = st?.scores[contestantId]?.isDisqualified ?? false;
+      } else {
+        wasDQ = task.scores[contestantId]?.isDisqualified ?? false;
+      }
+
+      const nextIsDQ = !wasDQ;
+      const updates: Partial<ScoreEntry> = {
+        isDisqualified: nextIsDQ,
+        points: nextIsDQ ? 0 : 1,
+        dqReason: nextIsDQ ? (dqReason || 'Disqualified by Taskmaster') : undefined,
+      };
+
+      const currentContestantIds = prev.contestants.map((c) => c.id);
+      const updatedEpisodes = prev.episodes.map((e) => ({
+        ...e,
+        tasks: e.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+          if (subtaskId && t.subtasks) {
+            const updatedSubtasks = t.subtasks.map((s) => {
+              if (s.id !== subtaskId) return s;
+              const currentEntry = s.scores[contestantId] || { contestantId, points: 0, isDisqualified: false };
+              return {
+                ...s,
+                scores: {
+                  ...s.scores,
+                  [contestantId]: { ...currentEntry, ...updates },
+                },
+              };
+            });
+            const newParentScores = calculateParentScoresFromSubtasks({ ...t, subtasks: updatedSubtasks }, currentContestantIds);
+            return {
+              ...t,
+              subtasks: updatedSubtasks,
+              scores: newParentScores,
+            };
+          }
+
+          const currentEntry = t.scores[contestantId] || { contestantId, points: 0, isDisqualified: false };
+          return {
+            ...t,
+            scores: {
+              ...t.scores,
+              [contestantId]: { ...currentEntry, ...updates },
+            },
+          };
+        }),
+      }));
+
+      return { ...prev, episodes: updatedEpisodes };
     });
 
-    if (!isCurrentlyDQ) {
+    if (!wasDQ) {
       triggerSound('dq');
     }
-  }, [activeEpisode, setScore, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
-  const autoScoreByRanking = useCallback((taskId: string, orderedContestantIds: string[], descending: boolean = true) => {
-    // 5 points for 1st, 4 for 2nd, etc.
+  const autoScoreByRanking = useCallback((
+    taskId: string,
+    orderedContestantIds: string[],
+    descending: boolean = true,
+    subtaskId?: string | null
+  ) => {
     const pointScale = [5, 4, 3, 2, 1];
     const ordered = descending ? orderedContestantIds : [...orderedContestantIds].reverse();
 
@@ -673,20 +935,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     });
 
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const newScores = { ...t.scores };
-        Object.entries(scoreUpdates).forEach(([cid, entry]) => {
-          newScores[cid] = { ...(newScores[cid] || { contestantId: cid }), ...entry } as ScoreEntry;
-        });
-        return { ...t, scores: newScores };
-      }),
-    }));
-
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+    setTaskScores(taskId, scoreUpdates, subtaskId, Boolean(subtaskId));
+    triggerSound('reveal');
+  }, [setTaskScores, triggerSound]);
 
   // Participant Assignment / Sit-out actions
   const setTaskAssignedContestants = useCallback((taskId: string, contestantIds: string[]) => {
@@ -807,97 +1058,26 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, [state, broadcastState]);
 
-  const setSubtaskScore = useCallback((taskId: string, subtaskId: string, contestantId: string, updates: Partial<ScoreEntry>) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId || !t.subtasks) return t;
-        const updatedSubtasks = t.subtasks.map((st) => {
-          if (st.id !== subtaskId) return st;
-          const currentEntry = st.scores[contestantId] || {
-            contestantId,
-            points: 0,
-            isDisqualified: false,
-          };
-          return {
-            ...st,
-            scores: {
-              ...st.scores,
-              [contestantId]: { ...currentEntry, ...updates },
-            },
-          };
-        });
-        return { ...t, subtasks: updatedSubtasks };
-      }),
-    }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
-
   const syncSubtaskScoresToParent = useCallback((taskId: string) => {
-    const currentEp = state.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
-    const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
-    if (!currentTask || !currentTask.subtasks || currentTask.subtasks.length === 0) return;
+    updateAndBroadcastState((prev) => {
+      const currentEp = prev.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
+      const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
+      if (!currentTask || !currentTask.subtasks || currentTask.subtasks.length === 0) return prev;
 
-    const mode = currentTask.subtaskScoringMode || 'sum';
-    const assignedIds = currentTask.assignedContestantIds && currentTask.assignedContestantIds.length > 0
-      ? currentTask.assignedContestantIds
-      : state.contestants.map((c) => c.id);
+      const parentScores = calculateParentScoresFromSubtasks(
+        currentTask,
+        prev.contestants.map((c) => c.id)
+      );
 
-    if (mode === 'sum') {
-      const parentScores: Record<string, ScoreEntry> = { ...currentTask.scores };
-      assignedIds.forEach((cid) => {
-        let totalPts = 0;
-        let hasDQ = false;
-        const notes: string[] = [];
-        currentTask.subtasks?.forEach((st) => {
-          const sc = st.scores[cid];
-          if (sc) {
-            if (sc.isDisqualified) {
-              hasDQ = true;
-            } else {
-              totalPts += Number(sc.points || 0);
-            }
-            if (sc.attemptNote) notes.push(`${st.title}: ${sc.attemptNote}`);
-          }
-        });
-        parentScores[cid] = {
-          contestantId: cid,
-          points: hasDQ ? 0 : totalPts,
-          isDisqualified: hasDQ,
-          dqReason: hasDQ ? 'Disqualified in subtask' : undefined,
-          attemptNote: notes.join(' | '),
-        };
-      });
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => (t.id === taskId ? { ...t, scores: parentScores } : t)),
+      }));
 
-      // Assign ranks
-      const sorted = assignedIds
-        .filter((cid) => !parentScores[cid].isDisqualified)
-        .sort((a, b) => (parentScores[b]?.points || 0) - (parentScores[a]?.points || 0));
-      let curRank = 1;
-      for (let i = 0; i < sorted.length; i++) {
-        if (i > 0 && parentScores[sorted[i]].points < parentScores[sorted[i - 1]].points) {
-          curRank = i + 1;
-        }
-        parentScores[sorted[i]].rank = curRank;
-      }
-
-      updateTask(taskId, { scores: parentScores });
-    } else if (mode === 'final_rank') {
-      const contestantSums: Record<string, number> = {};
-      assignedIds.forEach((cid) => {
-        let sum = 0;
-        currentTask.subtasks?.forEach((st) => {
-          const sc = st.scores[cid];
-          if (sc && !sc.isDisqualified) sum += Number(sc.points || 0);
-        });
-        contestantSums[cid] = sum;
-      });
-
-      const ordered = [...assignedIds].sort((a, b) => (contestantSums[b] || 0) - (contestantSums[a] || 0));
-      autoScoreByRanking(taskId, ordered, true);
-    }
+      return { ...prev, episodes: updatedEpisodes };
+    });
     triggerSound('reveal');
-  }, [state, updateTask, autoScoreByRanking, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   // Spectator Betting actions
   const setTaskBet = useCallback((taskId: string, bettorId: string, bet: Omit<TaskBet, 'bettorId'>) => {
@@ -1069,7 +1249,11 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     // Check if contestant was DQ'd or scored
-    const scoreEntry = activeTask?.scores[contestantId];
+    const activeSubtaskId = state.presentation.activeSubtaskId;
+    const currentSubtask = activeSubtaskId && activeTask?.subtasks
+      ? activeTask.subtasks.find((st) => st.id === activeSubtaskId)
+      : null;
+    const scoreEntry = currentSubtask ? currentSubtask.scores[contestantId] : activeTask?.scores[contestantId];
     if (scoreEntry?.isDisqualified) {
       triggerSound('dq');
     } else {
@@ -1083,12 +1267,18 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ? activeTask.assignedContestantIds
       : state.contestants.map((c) => c.id);
 
+    const activeSubtaskId = state.presentation.activeSubtaskId;
+    const currentSubtask = activeSubtaskId && activeTask.subtasks
+      ? activeTask.subtasks.find((st) => st.id === activeSubtaskId)
+      : null;
+    const scoresToEvaluate = currentSubtask?.scores || activeTask.scores;
+
     // Reveal from lowest to highest points for maximum drama among assigned contestants
     const unrevealed = state.contestants
       .filter((c) => assignedIds.includes(c.id) && !state.presentation.revealedContestantIds.includes(c.id))
       .sort((a, b) => {
-        const scoreA = activeTask.scores[a.id]?.points ?? 0;
-        const scoreB = activeTask.scores[b.id]?.points ?? 0;
+        const scoreA = scoresToEvaluate[a.id]?.points ?? 0;
+        const scoreB = scoresToEvaluate[b.id]?.points ?? 0;
         return scoreA - scoreB;
       });
 
@@ -1279,6 +1469,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         revealBet,
         revealAllBets,
         setScore,
+        setTaskScores,
         quickRankTask,
         toggleDQ,
         autoScoreByRanking,
