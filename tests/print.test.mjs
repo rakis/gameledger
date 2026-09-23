@@ -62,7 +62,7 @@ const defaultOptions = {
   separateSubtasks: true,
   includeTimeLimit: true,
   appendTimeStartsNow: true,
-  fontSize: 'large',
+  fontSizePt: 22,
 };
 
 const pagesSingle = generatePrintablePages([mockSingleTask], defaultOptions);

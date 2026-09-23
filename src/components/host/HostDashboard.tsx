@@ -32,7 +32,7 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({ onOpenPresentation
     separateSubtasks: true,
     includeTimeLimit: true,
     appendTimeStartsNow: true,
-    fontSize: 'large',
+    fontSizePt: 22,
   });
 
   // Calculate printable tasks and sheets based on options
@@ -110,7 +110,7 @@ export const HostDashboard: React.FC<HostDashboardProps> = ({ onOpenPresentation
       {/* Print Target DOM Layout (visible only in @media print) */}
       <PrintTasksContainer
         pages={printablePages}
-        fontSize={printOptions.fontSize}
+        fontSizePt={printOptions.fontSizePt}
       />
     </>
   );

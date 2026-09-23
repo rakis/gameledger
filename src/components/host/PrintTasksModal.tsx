@@ -8,6 +8,8 @@ import {
   FileText,
   Clock,
   Settings2,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import {
   PrintOptions,
@@ -70,17 +72,9 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
     }, 100);
   };
 
-  const getFontSizePreviewClass = () => {
-    switch (options.fontSize) {
-      case 'normal':
-        return 'text-sm md:text-base leading-relaxed';
-      case 'xlarge':
-        return 'text-xl md:text-2xl leading-relaxed';
-      case 'large':
-      default:
-        return 'text-base md:text-lg leading-relaxed';
-    }
-  };
+  // Dynamically scale preview font size relative to sheet preview dimensions
+  const previewFontSizePx = Math.max(10, Math.round(options.fontSizePt * 0.72));
+  const previewTitleFontSizePx = Math.round(previewFontSizePx * 1.15);
 
   const activeTask = activeEpisode?.tasks.find((t) => t.id === state.activeTaskId);
 
@@ -268,28 +262,94 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
               </div>
             </div>
 
-            {/* Typography Font Size */}
+            {/* Typography Font Size with Dynamic +/- Controls */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-tm-gold block mb-2">
-                Font Size
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['normal', 'large', 'xlarge'] as const).map((size) => (
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-tm-gold">
+                  Font Size
+                </label>
+                <span className="text-xs font-mono font-bold text-tm-goldLight bg-stone-950 px-2.5 py-0.5 rounded-full border border-stone-800 shadow-inner">
+                  {options.fontSizePt} pt
+                </span>
+              </div>
+
+              <div className="bg-stone-950/70 p-4 rounded-xl border border-stone-800 space-y-3">
+                {/* Stepper with +/- buttons and dynamic slider */}
+                <div className="flex items-center gap-3">
                   <button
-                    key={size}
                     type="button"
-                    onClick={() => setOptions((prev) => ({ ...prev, fontSize: size }))}
-                    className={`py-2 px-3 rounded-xl text-xs font-medium border capitalize transition-all ${
-                      options.fontSize === size
-                        ? 'bg-stone-800 border-tm-gold text-tm-goldLight font-bold shadow-sm'
-                        : 'bg-stone-950/60 border-stone-800 text-stone-400 hover:border-stone-700'
-                    }`}
+                    onClick={() =>
+                      setOptions((prev) => ({
+                        ...prev,
+                        fontSizePt: Math.max(12, prev.fontSizePt - 1),
+                      }))
+                    }
+                    disabled={options.fontSizePt <= 12}
+                    className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 border border-stone-700 hover:border-tm-gold transition-colors cursor-pointer flex-shrink-0"
+                    title="Decrease font size (-1pt)"
                   >
-                    {size === 'normal' && 'Normal (18pt)'}
-                    {size === 'large' && 'Large (22pt)'}
-                    {size === 'xlarge' && 'X-Large (26pt)'}
+                    <Minus className="w-4 h-4" />
                   </button>
-                ))}
+
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="12"
+                      max="40"
+                      step="1"
+                      value={options.fontSizePt}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setOptions((prev) => ({ ...prev, fontSizePt: val }));
+                      }}
+                      className="w-full accent-tm-gold cursor-pointer h-2 bg-stone-800 rounded-lg appearance-none"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOptions((prev) => ({
+                        ...prev,
+                        fontSizePt: Math.min(40, prev.fontSizePt + 1),
+                      }))
+                    }
+                    disabled={options.fontSizePt >= 40}
+                    className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 border border-stone-700 hover:border-tm-gold transition-colors cursor-pointer flex-shrink-0"
+                    title="Increase font size (+1pt)"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                  {[
+                    { label: 'Compact', pt: 16 },
+                    { label: 'Standard', pt: 20 },
+                    { label: 'Large', pt: 24 },
+                    { label: 'Bold', pt: 28 },
+                    { label: 'Jumbo', pt: 34 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.pt}
+                      type="button"
+                      onClick={() =>
+                        setOptions((prev) => ({ ...prev, fontSizePt: preset.pt }))
+                      }
+                      className={`flex-1 min-w-[50px] py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        options.fontSizePt === preset.pt
+                          ? 'bg-tm-card border-tm-gold text-tm-goldLight shadow-sm'
+                          : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                      }`}
+                    >
+                      <span>{preset.label}</span>
+                      <span className="text-[10px] block opacity-70 font-mono font-normal">
+                        {preset.pt}pt
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -345,14 +405,18 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 >
                   {/* Task Title (if enabled) */}
                   {currentPreviewPage?.renderedTitle && (
-                    <div className="font-serif font-bold text-sm md:text-base text-stone-900 mb-4 pb-2 border-b border-stone-300 w-full text-center">
+                    <div
+                      className="font-serif font-bold text-stone-900 mb-4 pb-2 border-b border-stone-300 w-full text-center"
+                      style={{ fontSize: `${previewTitleFontSizePx}px` }}
+                    >
                       {currentPreviewPage.renderedTitle}
                     </div>
                   )}
 
                   {/* Task Brief Content */}
                   <div
-                    className={`font-medium tracking-wide whitespace-pre-wrap text-stone-900 ${getFontSizePreviewClass()}`}
+                    className="font-medium tracking-wide whitespace-pre-wrap text-stone-900"
+                    style={{ fontSize: `${previewFontSizePx}px`, lineHeight: 1.6 }}
                   >
                     {currentPreviewPage?.renderedBrief}
                   </div>
@@ -360,7 +424,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   {/* Time limit if applicable */}
                   {currentPreviewPage?.timeLimitNotice && (
                     <div
-                      className={`mt-4 font-medium text-stone-800 ${getFontSizePreviewClass()}`}
+                      className="mt-4 font-medium text-stone-800"
+                      style={{ fontSize: `${previewFontSizePx}px`, lineHeight: 1.6 }}
                     >
                       {currentPreviewPage.timeLimitNotice}
                     </div>
@@ -369,7 +434,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   {/* "Your time starts now." */}
                   {currentPreviewPage?.timeStartsNotice && (
                     <div
-                      className={`mt-3 font-bold text-stone-950 ${getFontSizePreviewClass()}`}
+                      className="mt-3 font-bold text-stone-950"
+                      style={{ fontSize: `${previewFontSizePx}px`, lineHeight: 1.6 }}
                     >
                       {currentPreviewPage.timeStartsNotice}
                     </div>

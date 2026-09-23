@@ -6,7 +6,7 @@ export interface PrintOptions {
   separateSubtasks: boolean;
   includeTimeLimit: boolean;
   appendTimeStartsNow: boolean;
-  fontSize: 'normal' | 'large' | 'xlarge';
+  fontSizePt: number;
 }
 
 export interface PrintablePageItem {
