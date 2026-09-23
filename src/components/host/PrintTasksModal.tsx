@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useGame } from '../../context/GameContext';
 import {
   Printer,
@@ -10,10 +10,14 @@ import {
   Settings2,
   Plus,
   Minus,
+  Layers,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import {
   PrintOptions,
   PrintablePageItem,
+  TaskPrintOptions,
 } from '../../utils/printTasks';
 
 interface PrintTasksModalProps {
@@ -33,8 +37,11 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
   setOptions,
   pages,
 }) => {
-  const { activeEpisode, state } = useGame();
+  const { activeEpisode, state, updateTask } = useGame();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [targetMode, setTargetMode] = useState<'all' | 'single'>('all');
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   // Sync initial scope when opening
   useEffect(() => {
@@ -61,22 +68,208 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Extract unique tasks in scope for printing
+  const uniqueTasksInScope = useMemo(() => {
+    const map = new Map<string, { id: string; title: string }>();
+    for (const page of pages) {
+      if (!map.has(page.taskId)) {
+        map.set(page.taskId, { id: page.taskId, title: page.taskTitle });
+      }
+    }
+    return Array.from(map.values());
+  }, [pages]);
+
+  const allTasksMap = useMemo(() => {
+    const map = new Map<string, (typeof state.episodes)[0]['tasks'][0]>();
+    for (const ep of state.episodes) {
+      for (const t of ep.tasks) {
+        map.set(t.id, t);
+      }
+    }
+    return map;
+  }, [state.episodes]);
+
+  // Keep selectedTaskId in sync with available tasks in scope
+  useEffect(() => {
+    if (uniqueTasksInScope.length > 0) {
+      if (!selectedTaskId || !uniqueTasksInScope.some((t) => t.id === selectedTaskId)) {
+        const foundActive = uniqueTasksInScope.find((t) => t.id === state.activeTaskId);
+        const currentPreviewId = pages[currentPageIndex]?.taskId;
+        const foundPreview = uniqueTasksInScope.find((t) => t.id === currentPreviewId);
+        setSelectedTaskId(foundActive?.id || foundPreview?.id || uniqueTasksInScope[0].id);
+      }
+    }
+  }, [uniqueTasksInScope, state.activeTaskId, selectedTaskId, pages, currentPageIndex]);
+
   if (!isOpen) return null;
 
   const currentPreviewPage = pages[currentPageIndex];
+  const activeTask = activeEpisode?.tasks.find((t) => t.id === state.activeTaskId);
+
+  // Selected task model
+  const selectedTask = allTasksMap.get(selectedTaskId);
+  const taskOverride = options.taskOverrides?.[selectedTaskId];
+  const taskStoredOpts = taskOverride ?? selectedTask?.printOptions;
+  const isTaskCustomized = Boolean(
+    (options.taskOverrides && selectedTaskId in options.taskOverrides) ||
+    selectedTask?.printOptions
+  );
+
+  // Current values reflected in the controls
+  const activeControls = {
+    includeTitle:
+      targetMode === 'single'
+        ? (taskStoredOpts?.includeTitle ?? options.includeTitle)
+        : options.includeTitle,
+    separateSubtasks:
+      targetMode === 'single'
+        ? (taskStoredOpts?.separateSubtasks ?? options.separateSubtasks)
+        : options.separateSubtasks,
+    includeTimeLimit:
+      targetMode === 'single'
+        ? (taskStoredOpts?.includeTimeLimit ?? options.includeTimeLimit)
+        : options.includeTimeLimit,
+    appendTimeStartsNow:
+      targetMode === 'single'
+        ? (taskStoredOpts?.appendTimeStartsNow ?? options.appendTimeStartsNow)
+        : options.appendTimeStartsNow,
+    fontSizePt:
+      targetMode === 'single'
+        ? (taskStoredOpts?.fontSizePt ?? options.fontSizePt)
+        : options.fontSizePt,
+  };
+
+  const handleOptionChange = <K extends keyof TaskPrintOptions>(
+    key: K,
+    value: TaskPrintOptions[K]
+  ) => {
+    if (targetMode === 'all') {
+      setOptions((prev) => ({
+        ...prev,
+        [key]: value,
+      }));
+    } else if (selectedTaskId) {
+      const updatedOpts: TaskPrintOptions = {
+        includeTitle: activeControls.includeTitle,
+        separateSubtasks: activeControls.separateSubtasks,
+        includeTimeLimit: activeControls.includeTimeLimit,
+        appendTimeStartsNow: activeControls.appendTimeStartsNow,
+        fontSizePt: activeControls.fontSizePt,
+        [key]: value,
+      };
+
+      setOptions((prev) => ({
+        ...prev,
+        taskOverrides: {
+          ...(prev.taskOverrides || {}),
+          [selectedTaskId]: updatedOpts,
+        },
+      }));
+
+      updateTask(selectedTaskId, {
+        printOptions: updatedOpts,
+      });
+    }
+  };
+
+  const handleApplyToAll = () => {
+    const newGlobalOptions = {
+      includeTitle: activeControls.includeTitle,
+      separateSubtasks: activeControls.separateSubtasks,
+      includeTimeLimit: activeControls.includeTimeLimit,
+      appendTimeStartsNow: activeControls.appendTimeStartsNow,
+      fontSizePt: activeControls.fontSizePt,
+    };
+
+    setOptions((prev) => ({
+      ...prev,
+      ...newGlobalOptions,
+      taskOverrides: {},
+    }));
+
+    uniqueTasksInScope.forEach((t) => {
+      updateTask(t.id, { printOptions: undefined });
+    });
+
+    setFeedbackMessage('Applied options to all tasks');
+    setTimeout(() => setFeedbackMessage(null), 2500);
+  };
+
+  const handleApplyToOnlyThisTask = () => {
+    if (!selectedTaskId) return;
+
+    const currentOpts: TaskPrintOptions = {
+      includeTitle: activeControls.includeTitle,
+      separateSubtasks: activeControls.separateSubtasks,
+      includeTimeLimit: activeControls.includeTimeLimit,
+      appendTimeStartsNow: activeControls.appendTimeStartsNow,
+      fontSizePt: activeControls.fontSizePt,
+    };
+
+    setOptions((prev) => ({
+      ...prev,
+      taskOverrides: {
+        ...(prev.taskOverrides || {}),
+        [selectedTaskId]: currentOpts,
+      },
+    }));
+
+    updateTask(selectedTaskId, {
+      printOptions: currentOpts,
+    });
+
+    setTargetMode('single');
+    setFeedbackMessage(`Applied options to only "${selectedTask?.title || 'task'}"`);
+    setTimeout(() => setFeedbackMessage(null), 2500);
+  };
+
+  const handleResetTaskToDefault = () => {
+    if (!selectedTaskId) return;
+
+    setOptions((prev) => {
+      const nextOverrides = { ...(prev.taskOverrides || {}) };
+      delete nextOverrides[selectedTaskId];
+      return {
+        ...prev,
+        taskOverrides: nextOverrides,
+      };
+    });
+
+    updateTask(selectedTaskId, {
+      printOptions: undefined,
+    });
+
+    setFeedbackMessage(`Reset "${selectedTask?.title || 'task'}" to default`);
+    setTimeout(() => setFeedbackMessage(null), 2500);
+  };
+
+  const handlePageChange = (newIndex: number) => {
+    const bounded = Math.max(0, Math.min(pages.length - 1, newIndex));
+    setCurrentPageIndex(bounded);
+    if (targetMode === 'single' && pages[bounded]) {
+      setSelectedTaskId(pages[bounded].taskId);
+    }
+  };
+
+  const handleSelectTask = (taskId: string) => {
+    setSelectedTaskId(taskId);
+    const targetPageIdx = pages.findIndex((p) => p.taskId === taskId);
+    if (targetPageIdx !== -1) {
+      setCurrentPageIndex(targetPageIdx);
+    }
+  };
 
   const handlePrint = () => {
-    // Small timeout to ensure any state flush before native print dialog opens
     setTimeout(() => {
       window.print();
     }, 100);
   };
 
-  // Dynamically scale preview font size relative to sheet preview dimensions
-  const previewFontSizePx = Math.max(10, Math.round(options.fontSizePt * 0.72));
+  // Preview font size based on the current preview page's resolved font size
+  const previewSheetFontSizePt =
+    currentPreviewPage?.fontSizePt ?? activeControls.fontSizePt;
+  const previewFontSizePx = Math.max(10, Math.round(previewSheetFontSizePt * 0.72));
   const previewTitleFontSizePx = Math.round(previewFontSizePx * 1.15);
-
-  const activeTask = activeEpisode?.tasks.find((t) => t.id === state.activeTaskId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in screen-only">
@@ -171,11 +364,115 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
               </div>
             </div>
 
+            {/* Target Mode: All Tasks vs Only This Task */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-tm-gold flex items-center gap-1.5">
+                  <Settings2 className="w-3.5 h-3.5" />
+                  <span>Apply Options To</span>
+                </label>
+                {feedbackMessage && (
+                  <span className="text-[11px] text-emerald-300 animate-fade-in flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>{feedbackMessage}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setTargetMode('all')}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                    targetMode === 'all'
+                      ? 'bg-tm-card border-tm-gold text-tm-goldLight shadow-sm ring-1 ring-tm-gold/30'
+                      : 'bg-stone-950/60 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                  }`}
+                >
+                  <Layers className="w-4 h-4 text-tm-gold shrink-0" />
+                  <div className="text-left">
+                    <span className="block font-bold">All Tasks</span>
+                    <span className="text-[10px] opacity-75 block font-normal">Apply uniformly across all sheets</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTargetMode('single')}
+                  className={`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                    targetMode === 'single'
+                      ? 'bg-tm-card border-tm-gold text-tm-goldLight shadow-sm ring-1 ring-tm-gold/30'
+                      : 'bg-stone-950/60 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-tm-gold shrink-0" />
+                  <div className="text-left truncate">
+                    <span className="block font-bold">Only This Task</span>
+                    <span className="text-[10px] opacity-75 block font-normal truncate">
+                      {selectedTask?.title || 'Selected task'}
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Task Selector when in "Only This Task" mode */}
+              {targetMode === 'single' && (
+                <div className="p-3 bg-stone-950/90 rounded-xl border border-stone-800 space-y-2 mb-3 animate-fade-in">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-stone-300 uppercase tracking-wider">
+                      Customizing Task:
+                    </span>
+                    {isTaskCustomized ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Custom Options
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-stone-500">
+                        Using All Tasks Default
+                      </span>
+                    )}
+                  </div>
+
+                  <select
+                    value={selectedTaskId}
+                    onChange={(e) => handleSelectTask(e.target.value)}
+                    className="w-full bg-stone-900 border border-stone-700 rounded-lg px-2.5 py-1.5 text-xs text-stone-200 focus:outline-none focus:border-tm-gold cursor-pointer"
+                  >
+                    {uniqueTasksInScope.map((t) => {
+                      const hasCustom = Boolean(
+                        options.taskOverrides?.[t.id] || allTasksMap.get(t.id)?.printOptions
+                      );
+                      return (
+                        <option key={t.id} value={t.id}>
+                          {t.title} {hasCustom ? '★ (Custom)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {isTaskCustomized && (
+                    <div className="pt-1 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={handleResetTaskToDefault}
+                        className="text-[11px] text-stone-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Reset to All Tasks default</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Layout & Content Options */}
             <div>
               <label className="text-xs font-bold uppercase tracking-wider text-tm-gold block mb-2 flex items-center gap-1.5">
                 <Settings2 className="w-3.5 h-3.5" />
-                <span>Sheet Content & Options</span>
+                <span>
+                  Sheet Content {targetMode === 'single' ? `(${selectedTask?.title || 'Task'})` : '(All Tasks)'}
+                </span>
               </label>
 
               <div className="space-y-3 bg-stone-950/70 p-4 rounded-xl border border-stone-800">
@@ -183,10 +480,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={options.includeTitle}
-                    onChange={(e) =>
-                      setOptions((prev) => ({ ...prev, includeTitle: e.target.checked }))
-                    }
+                    checked={activeControls.includeTitle}
+                    onChange={(e) => handleOptionChange('includeTitle', e.target.checked)}
                     className="mt-0.5 rounded border-stone-700 text-tm-red focus:ring-tm-gold cursor-pointer"
                   />
                   <div>
@@ -203,10 +498,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={options.separateSubtasks}
-                    onChange={(e) =>
-                      setOptions((prev) => ({ ...prev, separateSubtasks: e.target.checked }))
-                    }
+                    checked={activeControls.separateSubtasks}
+                    onChange={(e) => handleOptionChange('separateSubtasks', e.target.checked)}
                     className="mt-0.5 rounded border-stone-700 text-tm-red focus:ring-tm-gold cursor-pointer"
                   />
                   <div>
@@ -223,10 +516,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={options.includeTimeLimit}
-                    onChange={(e) =>
-                      setOptions((prev) => ({ ...prev, includeTimeLimit: e.target.checked }))
-                    }
+                    checked={activeControls.includeTimeLimit}
+                    onChange={(e) => handleOptionChange('includeTimeLimit', e.target.checked)}
                     className="mt-0.5 rounded border-stone-700 text-tm-red focus:ring-tm-gold cursor-pointer"
                   />
                   <div>
@@ -244,13 +535,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={options.appendTimeStartsNow}
-                    onChange={(e) =>
-                      setOptions((prev) => ({
-                        ...prev,
-                        appendTimeStartsNow: e.target.checked,
-                      }))
-                    }
+                    checked={activeControls.appendTimeStartsNow}
+                    onChange={(e) => handleOptionChange('appendTimeStartsNow', e.target.checked)}
                     className="mt-0.5 rounded border-stone-700 text-tm-red focus:ring-tm-gold cursor-pointer"
                   />
                   <div>
@@ -269,10 +555,10 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-tm-gold">
-                  Font Size
+                  Font Size {targetMode === 'single' ? `(${selectedTask?.title || 'Task'})` : '(All Tasks)'}
                 </label>
                 <span className="text-xs font-mono font-bold text-tm-goldLight bg-stone-950 px-2.5 py-0.5 rounded-full border border-stone-800 shadow-inner">
-                  {options.fontSizePt} pt
+                  {activeControls.fontSizePt} pt
                 </span>
               </div>
 
@@ -282,12 +568,9 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      setOptions((prev) => ({
-                        ...prev,
-                        fontSizePt: Math.max(12, prev.fontSizePt - 1),
-                      }))
+                      handleOptionChange('fontSizePt', Math.max(12, activeControls.fontSizePt - 1))
                     }
-                    disabled={options.fontSizePt <= 12}
+                    disabled={activeControls.fontSizePt <= 12}
                     className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 border border-stone-700 hover:border-tm-gold transition-colors cursor-pointer flex-shrink-0"
                     title="Decrease font size (-1pt)"
                   >
@@ -300,11 +583,8 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                       min="12"
                       max="40"
                       step="1"
-                      value={options.fontSizePt}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setOptions((prev) => ({ ...prev, fontSizePt: val }));
-                      }}
+                      value={activeControls.fontSizePt}
+                      onChange={(e) => handleOptionChange('fontSizePt', Number(e.target.value))}
                       className="w-full accent-tm-gold cursor-pointer h-2 bg-stone-800 rounded-lg appearance-none"
                     />
                   </div>
@@ -312,12 +592,9 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   <button
                     type="button"
                     onClick={() =>
-                      setOptions((prev) => ({
-                        ...prev,
-                        fontSizePt: Math.min(40, prev.fontSizePt + 1),
-                      }))
+                      handleOptionChange('fontSizePt', Math.min(40, activeControls.fontSizePt + 1))
                     }
-                    disabled={options.fontSizePt >= 40}
+                    disabled={activeControls.fontSizePt >= 40}
                     className="p-2 rounded-xl bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 border border-stone-700 hover:border-tm-gold transition-colors cursor-pointer flex-shrink-0"
                     title="Increase font size (+1pt)"
                   >
@@ -337,11 +614,9 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                     <button
                       key={preset.pt}
                       type="button"
-                      onClick={() =>
-                        setOptions((prev) => ({ ...prev, fontSizePt: preset.pt }))
-                      }
+                      onClick={() => handleOptionChange('fontSizePt', preset.pt)}
                       className={`flex-1 min-w-[50px] py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                        options.fontSizePt === preset.pt
+                        activeControls.fontSizePt === preset.pt
                           ? 'bg-tm-card border-tm-gold text-tm-goldLight shadow-sm'
                           : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
                       }`}
@@ -355,22 +630,63 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Direct Quick Apply Action Toolbar */}
+            <div className="pt-1 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleApplyToAll}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 hover:border-tm-gold/60 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                title="Apply current options to all tasks in scope and clear custom overrides"
+              >
+                <Layers className="w-3.5 h-3.5 text-tm-gold" />
+                <span>Apply to All Tasks</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplyToOnlyThisTask}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 hover:border-tm-gold/60 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                title="Apply current options specifically to only this task"
+              >
+                <FileText className="w-3.5 h-3.5 text-tm-gold" />
+                <span>Apply to Only Task</span>
+              </button>
+            </div>
           </div>
 
           {/* Live Preview Column */}
           <div className="lg:col-span-6 flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                Sheet Preview ({pages.length === 0 ? 0 : currentPageIndex + 1} of {pages.length})
-              </label>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-400 block">
+                  Sheet Preview ({pages.length === 0 ? 0 : currentPageIndex + 1} of {pages.length})
+                </label>
+                {currentPreviewPage && (
+                  <div className="text-[11px] text-stone-400 flex items-center gap-1.5 mt-0.5">
+                    <span className="font-semibold text-stone-200 truncate max-w-[180px]">
+                      {currentPreviewPage.taskTitle}
+                    </span>
+                    {currentPreviewPage.isCustomized ? (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Custom ({currentPreviewPage.fontSizePt}pt)
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-stone-800 text-stone-400">
+                        Default ({currentPreviewPage.fontSizePt}pt)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {pages.length > 1 && (
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setCurrentPageIndex((prev) => Math.max(0, prev - 1))}
+                    onClick={() => handlePageChange(currentPageIndex - 1)}
                     disabled={currentPageIndex === 0}
-                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200"
+                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 cursor-pointer"
                     title="Previous page"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -380,11 +696,9 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setCurrentPageIndex((prev) => Math.min(pages.length - 1, prev + 1))
-                    }
+                    onClick={() => handlePageChange(currentPageIndex + 1)}
                     disabled={currentPageIndex >= pages.length - 1}
-                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200"
+                    className="p-1 rounded bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed text-stone-200 cursor-pointer"
                     title="Next page"
                   >
                     <ChevronRight className="w-4 h-4" />
@@ -466,7 +780,7 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-300 hover:text-white hover:bg-stone-800 transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-300 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
             >
               Cancel
             </button>

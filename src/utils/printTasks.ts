@@ -1,4 +1,6 @@
-import { Episode, Task } from '../types';
+import { Episode, Task, TaskPrintOptions } from '../types';
+
+export type { TaskPrintOptions };
 
 export interface PrintOptions {
   scope: 'episode' | 'current_task' | 'series';
@@ -7,6 +9,7 @@ export interface PrintOptions {
   includeTimeLimit: boolean;
   appendTimeStartsNow: boolean;
   fontSizePt: number;
+  taskOverrides?: Record<string, TaskPrintOptions>;
 }
 
 export interface PrintablePageItem {
@@ -24,6 +27,8 @@ export interface PrintablePageItem {
   renderedBrief: string;
   timeLimitNotice?: string;
   timeStartsNotice?: string;
+  fontSizePt: number;
+  isCustomized?: boolean;
 }
 
 /**
@@ -52,15 +57,23 @@ export const generatePrintablePages = (
   const pages: PrintablePageItem[] = [];
 
   for (const task of tasks) {
+    const override = options.taskOverrides?.[task.id] ?? task.printOptions;
+    const includeTitle = override?.includeTitle ?? options.includeTitle;
+    const separateSubtasks = override?.separateSubtasks ?? options.separateSubtasks;
+    const includeTimeLimit = override?.includeTimeLimit ?? options.includeTimeLimit;
+    const appendTimeStartsNow = override?.appendTimeStartsNow ?? options.appendTimeStartsNow;
+    const fontSizePt = override?.fontSizePt ?? options.fontSizePt;
+    const isCustomized = Boolean(override && Object.keys(override).length > 0);
+
     const hasSubtasks = (task.subtasks?.length || 0) > 0;
 
-    if (hasSubtasks && options.separateSubtasks && task.subtasks) {
+    if (hasSubtasks && separateSubtasks && task.subtasks) {
       task.subtasks.forEach((subtask, index) => {
         const timeLimit = subtask.timeLimitSeconds ?? task.timeLimitSeconds;
         const isTimed = subtask.isTimed ?? task.isTimed;
 
         const timeLimitNotice =
-          options.includeTimeLimit && isTimed && timeLimit
+          includeTimeLimit && isTimed && timeLimit
             ? `You have ${formatDuration(timeLimit)}.`
             : undefined;
 
@@ -70,11 +83,11 @@ export const generatePrintablePages = (
           briefLower.includes('starts now') || briefLower.includes('start now');
 
         const timeStartsNotice =
-          options.appendTimeStartsNow && !hasStartNow
+          appendTimeStartsNow && !hasStartNow
             ? 'Your time starts now.'
             : undefined;
 
-        const renderedTitle = options.includeTitle
+        const renderedTitle = includeTitle
           ? `${task.title}: Part ${index + 1} - ${subtask.title}`
           : undefined;
 
@@ -93,11 +106,13 @@ export const generatePrintablePages = (
           renderedBrief: subtask.brief,
           timeLimitNotice,
           timeStartsNotice,
+          fontSizePt,
+          isCustomized,
         });
       });
     } else {
       const timeLimitNotice =
-        options.includeTimeLimit && task.isTimed && task.timeLimitSeconds
+        includeTimeLimit && task.isTimed && task.timeLimitSeconds
           ? `You have ${formatDuration(task.timeLimitSeconds)}.`
           : undefined;
 
@@ -106,11 +121,11 @@ export const generatePrintablePages = (
         briefLower.includes('starts now') || briefLower.includes('start now');
 
       const timeStartsNotice =
-        options.appendTimeStartsNow && !hasStartNow
+        appendTimeStartsNow && !hasStartNow
           ? 'Your time starts now.'
           : undefined;
 
-      const renderedTitle = options.includeTitle ? task.title : undefined;
+      const renderedTitle = includeTitle ? task.title : undefined;
 
       pages.push({
         id: task.id,
@@ -124,6 +139,8 @@ export const generatePrintablePages = (
         renderedBrief: task.brief,
         timeLimitNotice,
         timeStartsNotice,
+        fontSizePt,
+        isCustomized,
       });
     }
   }

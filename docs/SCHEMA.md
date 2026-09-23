@@ -131,8 +131,17 @@ interface Task {
   subtaskScoringMode?: SubtaskScoringMode; // 'sum' | 'final_rank' | 'custom'
   bets?: Record<string, TaskBet>;     // Spectator wagers (bettorId -> TaskBet)
   showPartLabel?: boolean;            // Whether to display 'Part X' label on stage screen (default: false)
+  printOptions?: TaskPrintOptions;    // Optional per-task printable sheet styling overrides
   orderIndex: number;     // 0-based order position in the episode
   notes?: string;         // Optional private host notes
+}
+
+interface TaskPrintOptions {
+  includeTitle?: boolean;        // Whether to print the task title on the sheet
+  separateSubtasks?: boolean;    // Whether multi-part subtasks are split onto separate pages
+  includeTimeLimit?: boolean;    // Whether to append time limit notice on the sheet
+  appendTimeStartsNow?: boolean; // Whether to append "Your time starts now." on the sheet
+  fontSizePt?: number;           // Custom font size in points (12 to 40)
 }
 
 type TaskType = 

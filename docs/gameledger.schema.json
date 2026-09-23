@@ -258,6 +258,33 @@
         }
       }
     },
+    "taskPrintOptions": {
+      "type": "object",
+      "properties": {
+        "includeTitle": {
+          "type": "boolean",
+          "description": "Whether to print the task title on the sheet"
+        },
+        "separateSubtasks": {
+          "type": "boolean",
+          "description": "Whether multi-part subtasks are split onto separate pages"
+        },
+        "includeTimeLimit": {
+          "type": "boolean",
+          "description": "Whether to append time limit notice on the sheet"
+        },
+        "appendTimeStartsNow": {
+          "type": "boolean",
+          "description": "Whether to append 'Your time starts now.' on the sheet"
+        },
+        "fontSizePt": {
+          "type": "integer",
+          "description": "Custom font size in points (12 to 40)",
+          "minimum": 12,
+          "maximum": 40
+        }
+      }
+    },
     "task": {
       "type": "object",
       "required": ["id", "title", "brief", "type", "isTimed", "scores", "orderIndex"],
@@ -322,6 +349,10 @@
         "showPartLabel": {
           "type": "boolean",
           "description": "Whether to display the Part label badge and title prefix on the presentation stage screen"
+        },
+        "printOptions": {
+          "$ref": "#/$defs/taskPrintOptions",
+          "description": "Optional custom print sheet settings for this task"
         },
         "orderIndex": {
           "type": "integer",

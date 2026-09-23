@@ -114,4 +114,67 @@ assert.equal(singleTaskScope[0].id, 'task-1');
 
 console.log('✔ Scope filtering works for episode and current task.');
 
+// 6. Test task-specific print options via taskOverrides
+console.log('\n--- Testing taskOverrides in generatePrintablePages ---');
+const pagesWithOverrides = generatePrintablePages(
+  [mockSingleTask, mockMultiPartTask],
+  {
+    ...defaultOptions,
+    fontSizePt: 22,
+    includeTitle: false,
+    taskOverrides: {
+      'task-1': {
+        fontSizePt: 30,
+        includeTitle: true,
+      },
+    },
+  }
+);
+
+// Task 1 should have custom 30pt font size and title included
+assert.equal(pagesWithOverrides[0].taskId, 'task-1');
+assert.equal(pagesWithOverrides[0].fontSizePt, 30);
+assert.equal(pagesWithOverrides[0].renderedTitle, 'Tower of Eggs');
+assert.equal(pagesWithOverrides[0].isCustomized, true);
+
+// Task 2 (subtasks) should retain default 22pt and no title
+assert.equal(pagesWithOverrides[1].taskId, 'task-2');
+assert.equal(pagesWithOverrides[1].fontSizePt, 22);
+assert.equal(pagesWithOverrides[1].renderedTitle, undefined);
+assert.equal(pagesWithOverrides[1].isCustomized, false);
+
+console.log('✔ Task overrides successfully applied to single task while retaining defaults for other tasks.');
+
+// 7. Test task.printOptions persistence model and priority
+console.log('\n--- Testing task.printOptions priority and resolution ---');
+const taskWithStoredOptions = {
+  ...mockSingleTask,
+  id: 'task-custom',
+  title: 'Stored Options Challenge',
+  printOptions: {
+    fontSizePt: 18,
+    includeTimeLimit: false,
+  },
+};
+
+const pagesStored = generatePrintablePages([taskWithStoredOptions], defaultOptions);
+assert.equal(pagesStored[0].fontSizePt, 18);
+assert.equal(pagesStored[0].timeLimitNotice, undefined, 'Time limit notice should be disabled by task.printOptions');
+assert.equal(pagesStored[0].isCustomized, true);
+
+// Override should take precedence over task.printOptions
+const pagesOverridden = generatePrintablePages([taskWithStoredOptions], {
+  ...defaultOptions,
+  taskOverrides: {
+    'task-custom': {
+      fontSizePt: 36,
+      includeTimeLimit: true,
+    },
+  },
+});
+assert.equal(pagesOverridden[0].fontSizePt, 36);
+assert.equal(pagesOverridden[0].timeLimitNotice, 'You have 10 minutes.');
+
+console.log('✔ task.printOptions and taskOverrides priority verified successfully.');
+
 console.log('\nAll printable task tests passed! 🖨️✨');

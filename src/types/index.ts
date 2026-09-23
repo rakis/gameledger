@@ -52,6 +52,14 @@ export interface TaskBet {
   notes?: string;
 }
 
+export interface TaskPrintOptions {
+  includeTitle?: boolean;
+  separateSubtasks?: boolean;
+  includeTimeLimit?: boolean;
+  appendTimeStartsNow?: boolean;
+  fontSizePt?: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -67,6 +75,7 @@ export interface Task {
   subtaskScoringMode?: SubtaskScoringMode;
   bets?: Record<string, TaskBet>; // bettorId -> TaskBet
   showPartLabel?: boolean; // Whether to display part label badge on stage screen (default: false)
+  printOptions?: TaskPrintOptions; // Optional per-task print styling overrides
 }
 
 export interface Episode {

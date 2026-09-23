@@ -12,21 +12,23 @@ export const PrintTasksContainer: React.FC<PrintTasksContainerProps> = ({
 }) => {
   return (
     <div id="gameledger-print-root" className="print-only">
-      {pages.map((page) => (
-        <div key={page.id} className="print-page">
-          <div
-            className="print-page-content"
-            style={{ fontSize: `${fontSizePt}pt` }}
-          >
-            {/* Optional Title / Part Header */}
-            {page.renderedTitle && (
-              <h1
-                className="print-page-title font-bold mb-8"
-                style={{ fontSize: `${Math.round(fontSizePt * 1.15)}pt` }}
-              >
-                {page.renderedTitle}
-              </h1>
-            )}
+      {pages.map((page) => {
+        const effectiveFontSize = page.fontSizePt ?? fontSizePt;
+        return (
+          <div key={page.id} className="print-page">
+            <div
+              className="print-page-content"
+              style={{ fontSize: `${effectiveFontSize}pt` }}
+            >
+              {/* Optional Title / Part Header */}
+              {page.renderedTitle && (
+                <h1
+                  className="print-page-title font-bold mb-8"
+                  style={{ fontSize: `${Math.round(effectiveFontSize * 1.15)}pt` }}
+                >
+                  {page.renderedTitle}
+                </h1>
+              )}
 
             {/* Task Brief Content */}
             <div className="print-page-brief font-medium tracking-wide">
@@ -48,7 +50,8 @@ export const PrintTasksContainer: React.FC<PrintTasksContainerProps> = ({
             )}
           </div>
         </div>
-      ))}
-    </div>
-  );
+      );
+    })}
+  </div>
+);
 };
