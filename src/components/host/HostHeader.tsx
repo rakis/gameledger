@@ -12,18 +12,21 @@ import {
   Plus,
   Users,
   Settings,
+  Printer,
 } from 'lucide-react';
 
 interface HostHeaderProps {
   onToggleContestants: () => void;
   onOpenPresentation: () => void;
   onOpenNewTask: () => void;
+  onOpenPrintModal?: () => void;
 }
 
 export const HostHeader: React.FC<HostHeaderProps> = ({
   onToggleContestants,
   onOpenPresentation,
   onOpenNewTask,
+  onOpenPrintModal,
 }) => {
   const {
     state,
@@ -212,6 +215,19 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
                     <Sparkles className="w-4 h-4 text-amber-400" />
                     Trigger Confetti Burst
                   </button>
+
+                  {onOpenPrintModal && (
+                    <button
+                      onClick={() => {
+                        onOpenPrintModal();
+                        setShowSettingsDropdown(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-stone-300 hover:bg-stone-800 hover:text-white text-left"
+                    >
+                      <Printer className="w-4 h-4 text-tm-gold" />
+                      <span>Print Task Sheets</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {

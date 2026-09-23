@@ -13,13 +13,18 @@ import {
   ChevronDown,
   CheckCircle2,
   Circle,
+  Printer,
 } from 'lucide-react';
 
 interface TaskListSidebarProps {
   onOpenNewTask: () => void;
+  onOpenPrintModal?: () => void;
 }
 
-export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask }) => {
+export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({
+  onOpenNewTask,
+  onOpenPrintModal,
+}) => {
   const {
     activeEpisode,
     state,
@@ -77,13 +82,25 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({ onOpenNewTask 
           </h2>
         </div>
 
-        <button
-          onClick={onOpenNewTask}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-tm-red hover:bg-tm-redBright text-white text-xs font-bold shadow-sm transition-all"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Add Task</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          {onOpenPrintModal && (
+            <button
+              onClick={onOpenPrintModal}
+              title="Print task sheets for this episode"
+              className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-tm-gold border border-stone-700 transition-colors cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          <button
+            onClick={onOpenNewTask}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-tm-red hover:bg-tm-redBright text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Task</span>
+          </button>
+        </div>
       </div>
 
       {/* Task List items */}

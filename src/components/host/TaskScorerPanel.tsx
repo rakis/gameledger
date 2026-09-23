@@ -18,9 +18,14 @@ import {
   Shield,
   Coins,
   CheckCircle2,
+  Printer,
 } from 'lucide-react';
 
-export const TaskScorerPanel: React.FC = () => {
+interface TaskScorerPanelProps {
+  onOpenPrintModal?: () => void;
+}
+
+export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintModal }) => {
   const {
     activeTask,
     updateTask,
@@ -189,6 +194,17 @@ export const TaskScorerPanel: React.FC = () => {
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Sync to Master Scores</span>
+              </button>
+            )}
+
+            {onOpenPrintModal && (
+              <button
+                onClick={onOpenPrintModal}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-stone-100 text-xs font-semibold border border-stone-700 hover:border-tm-gold/60 transition-colors cursor-pointer"
+                title="Print task sheet for envelopes / physical game"
+              >
+                <Printer className="w-3.5 h-3.5 text-tm-gold" />
+                <span>Print Task</span>
               </button>
             )}
           </div>

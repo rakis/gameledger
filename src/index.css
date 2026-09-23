@@ -125,3 +125,79 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #8b111e;
 }
+
+/* Printable Tasks Media Rules */
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+@media print {
+  @page {
+    size: auto;
+    margin: 15mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .screen-only {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+    padding: 3rem 2rem !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: var(--font-typewriter) !important;
+  }
+
+  .print-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .print-page-content {
+    width: 100% !important;
+    max-width: 680px !important;
+    margin: 0 auto !important;
+  }
+
+  .print-page-title {
+    text-wrap: balance !important;
+    font-family: var(--font-serif) !important;
+  }
+
+  .print-page-brief {
+    white-space: pre-wrap !important;
+    text-wrap: pretty !important;
+    font-family: var(--font-typewriter) !important;
+    line-height: 1.8 !important;
+  }
+}
