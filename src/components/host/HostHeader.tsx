@@ -77,11 +77,11 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
     <header className="bg-tm-dark/95 border-b border-tm-cardBorder px-4 py-2.5 sticky top-0 z-30 backdrop-blur-md">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         {/* Left: Branding & Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="w-10 h-10 rounded-full wax-seal flex items-center justify-center text-tm-goldLight font-serif font-black text-sm shadow-wax flex-shrink-0">
             TM
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             {isEditingTitle ? (
               <form onSubmit={handleTitleSubmit} className="flex items-center gap-2">
                 <input
@@ -100,20 +100,21 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
                   setIsEditingTitle(true);
                 }}
                 title="Click to edit series title"
-                className="font-serif font-bold text-base md:text-lg text-stone-100 hover:text-tm-gold cursor-pointer transition-colors flex items-center gap-1.5"
+                className="font-serif font-bold text-base md:text-lg text-stone-100 hover:text-tm-gold cursor-pointer transition-colors flex items-center gap-1.5 min-w-0"
               >
-                <span>{state.seriesTitle}</span>
-                <span className="text-xs text-stone-500 font-sans font-normal hidden sm:inline">(edit)</span>
+                <span className="truncate">{state.seriesTitle}</span>
+                <span className="text-xs text-stone-500 font-sans font-normal hidden sm:inline shrink-0">(edit)</span>
               </h1>
             )}
 
             {/* Episode selector tabs */}
-            <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-1.5 mt-0.5 overflow-x-auto max-w-full scrollbar-none py-0.5">
               {state.episodes.map((ep) => (
                 <button
                   key={ep.id}
                   onClick={() => setActiveEpisode(ep.id)}
-                  className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-all ${
+                  title={ep.title ? `Ep ${ep.episodeNumber}: ${ep.title}` : `Episode ${ep.episodeNumber}`}
+                  className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-all shrink-0 ${
                     ep.id === state.activeEpisodeId
                       ? 'bg-tm-red text-white shadow-sm font-bold'
                       : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
@@ -125,7 +126,7 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
               <button
                 onClick={() => addEpisode()}
                 title="Add New Episode"
-                className="text-stone-400 hover:text-stone-200 hover:bg-stone-800 p-0.5 rounded-full"
+                className="text-stone-400 hover:text-stone-200 hover:bg-stone-800 p-0.5 rounded-full shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -134,7 +135,7 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
         </div>
 
         {/* Right: Presentation Screen Launchers & Tools */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {/* New Task Button */}
           <button
             onClick={onOpenNewTask}

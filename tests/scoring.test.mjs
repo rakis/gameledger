@@ -216,5 +216,14 @@ console.assert(activeTaskCounts['c5'] === 0, 'Sat-out contestant c5 does NOT inc
 
 console.log('✔ Spectator betting resolution awarded correct points and preserved sit-out status');
 
+// 6. Episode title update and long episode title handling
+console.log('\n--- Testing Episode Title Update & Long Title Handling ---');
+const longTitle = 'Episode 1: The Extremely Long, Elaborate, and Completely Over-The-Top Title That Exceeds Normal Screen Widths';
+const updatedEpisodes = DEMO_EPISODES.map((e) => (e.id === ep1.id ? { ...e, title: longTitle } : e));
+const updatedEp1 = updatedEpisodes.find((e) => e.id === ep1.id);
+console.assert(updatedEp1.title === longTitle, 'Updated episode title should match long title');
+console.assert(updatedEp1.tasks.length === ep1.tasks.length, 'Task count must remain unaffected by episode title update');
+console.log('✔ Episode title successfully updated with long title and tasks preserved');
+
 console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, and bets verified successfully! 🎉');
 

@@ -24,13 +24,13 @@ export const IdleStageView: React.FC = () => {
       </div>
 
       {/* Series & Episode Titles */}
-      <div className="max-w-3xl z-10 space-y-3">
+      <div className="max-w-4xl w-full z-10 space-y-3 px-4">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-tm-card border border-tm-cardBorder text-tm-gold text-sm md:text-base tracking-wider uppercase font-semibold">
           <Sparkles className="w-4 h-4 text-tm-goldBright" />
           <span>{state.seriesTitle}</span>
         </div>
 
-        <h1 className="font-serif font-black text-4xl md:text-6xl lg:text-7xl text-stone-100 tracking-tight leading-none drop-shadow-md">
+        <h1 className="font-serif font-black text-3xl sm:text-5xl md:text-6xl lg:text-7xl text-stone-100 tracking-tight leading-tight drop-shadow-md break-words">
           {activeEpisode?.title || 'GameLedger Stage'}
         </h1>
 

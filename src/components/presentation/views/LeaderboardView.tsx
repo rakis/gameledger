@@ -77,8 +77,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ initialMode = 
     <div className="flex-1 flex flex-col justify-center px-6 md:px-12 py-8 z-10 w-full max-w-5xl mx-auto">
       {/* Header & Toggle */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8">
-        <div>
-          <h2 className="font-serif font-black text-3xl md:text-5xl text-stone-100 tracking-tight">
+        <div className="min-w-0 flex-1 text-center md:text-left">
+          <h2 className="font-serif font-black text-2xl sm:text-3xl md:text-4xl lg:text-5xl text-stone-100 tracking-tight leading-tight break-words">
             {mode === 'episode' ? activeEpisode?.title || 'Episode Standings' : state.seriesTitle}
           </h2>
           <p className="text-tm-gold text-sm md:text-base font-semibold tracking-wider uppercase mt-1">
@@ -88,7 +88,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ initialMode = 
         </div>
 
         {/* Controls Container */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap shrink-0 justify-center md:justify-end">
           {/* Contestants vs Teams Toggle (if teams configured) */}
           {hasTeams && (
             <div className="flex items-center bg-stone-900/90 p-1 rounded-xl border border-stone-800 shadow-inner">

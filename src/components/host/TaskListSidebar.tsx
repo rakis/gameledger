@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Task, TaskType } from '../../types';
 import {
@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Circle,
   Printer,
+  Pencil,
 } from 'lucide-react';
 
 interface TaskListSidebarProps {
@@ -31,7 +32,30 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({
     setActiveTask,
     reorderTasks,
     removeTask,
+    updateEpisode,
   } = useGame();
+
+  const [isEditingEpisodeTitle, setIsEditingEpisodeTitle] = useState(false);
+  const [episodeTitleInput, setEpisodeTitleInput] = useState(activeEpisode?.title || '');
+
+  useEffect(() => {
+    if (activeEpisode) {
+      setEpisodeTitleInput(activeEpisode.title);
+      setIsEditingEpisodeTitle(false);
+    }
+  }, [activeEpisode?.id, activeEpisode?.title]);
+
+  const handleEpisodeTitleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeEpisode) return;
+    const trimmed = episodeTitleInput.trim();
+    if (trimmed) {
+      updateEpisode(activeEpisode.id, { title: trimmed });
+    } else {
+      setEpisodeTitleInput(activeEpisode.title);
+    }
+    setIsEditingEpisodeTitle(false);
+  };
 
   if (!activeEpisode) {
     return (
@@ -70,24 +94,57 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({
   };
 
   return (
-    <aside className="w-full md:w-80 bg-stone-900/80 border-r border-stone-800 flex flex-col h-full">
+    <aside className="w-full md:w-80 md:shrink-0 bg-stone-900/80 border-r border-stone-800 flex flex-col h-full overflow-hidden">
       {/* Episode title & Add Task button */}
-      <div className="p-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-950/40">
-        <div>
+      <div className="p-4 border-b border-stone-800 flex items-center justify-between gap-2 bg-stone-950/40 min-w-0">
+        <div className="min-w-0 flex-1">
           <span className="text-[10px] font-bold uppercase tracking-widest text-tm-gold block">
             Episode {activeEpisode.episodeNumber}
           </span>
-          <h2 className="font-serif font-bold text-base text-stone-100 truncate">
-            {activeEpisode.title}
-          </h2>
+          {isEditingEpisodeTitle ? (
+            <form onSubmit={handleEpisodeTitleSubmit} className="mt-0.5">
+              <input
+                type="text"
+                value={episodeTitleInput}
+                onChange={(e) => setEpisodeTitleInput(e.target.value)}
+                onBlur={() => handleEpisodeTitleSubmit()}
+                autoFocus
+                className="w-full min-w-0 bg-stone-900 text-stone-100 px-2 py-0.5 rounded border border-tm-gold text-sm font-bold focus:outline-none"
+              />
+            </form>
+          ) : (
+            <div className="flex items-center gap-1.5 group/ep min-w-0">
+              <h2
+                onClick={() => {
+                  setEpisodeTitleInput(activeEpisode.title);
+                  setIsEditingEpisodeTitle(true);
+                }}
+                className="font-serif font-bold text-base text-stone-100 hover:text-tm-gold truncate cursor-pointer transition-colors"
+                title={`Click to edit episode title: "${activeEpisode.title}"`}
+              >
+                {activeEpisode.title}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setEpisodeTitleInput(activeEpisode.title);
+                  setIsEditingEpisodeTitle(true);
+                }}
+                className="text-stone-500 hover:text-tm-gold opacity-0 group-hover/ep:opacity-100 transition-opacity p-0.5 shrink-0 cursor-pointer"
+                title="Edit episode title"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onOpenPrintModal && (
             <button
               onClick={onOpenPrintModal}
               title="Print task sheets for this episode"
-              className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-tm-gold border border-stone-700 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-tm-gold border border-stone-700 transition-colors cursor-pointer shrink-0"
             >
               <Printer className="w-3.5 h-3.5" />
             </button>
@@ -95,7 +152,7 @@ export const TaskListSidebar: React.FC<TaskListSidebarProps> = ({
 
           <button
             onClick={onOpenNewTask}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-tm-red hover:bg-tm-redBright text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-tm-red hover:bg-tm-redBright text-white text-xs font-bold shadow-sm transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Task</span>

@@ -130,7 +130,10 @@ export const PrintTasksModal: React.FC<PrintTasksModalProps> = ({
                   }`}
                 >
                   <span className="block font-bold">This Episode</span>
-                  <span className="text-[10px] text-stone-400 font-normal">
+                  <span
+                    className="text-[10px] text-stone-400 font-normal truncate block max-w-full"
+                    title={activeEpisode?.title ? `Ep ${activeEpisode.episodeNumber}: ${activeEpisode.title}` : undefined}
+                  >
                     Ep {activeEpisode?.episodeNumber ?? 1} ({activeEpisode?.tasks.length ?? 0} tasks)
                   </span>
                 </button>
