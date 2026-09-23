@@ -702,8 +702,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     broadcastState({
       ...state,
       activeTaskId: id,
+      activeSubtaskId: null,
       presentation: {
         ...state.presentation,
+        activeSubtaskId: null,
         revealedContestantIds: [],
         revealedAll: false,
       },

@@ -314,5 +314,74 @@ console.assert(tieScores['c3'].rank === 2, '2nd place tie has rank 2');
 console.assert(tieScores['c4'].rank === 4, '4th place skips to rank 4 after two 2nd place ties');
 console.log('✔ Competition tie ranking properly computes standard 1-2-2-4 rankings');
 
-console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, and bets verified successfully! 🎉');
+console.log('\n--- Testing Task Brief Stage View (No Task Name & Default to Part 1) ---');
+const resolveTaskBriefStageView = (task, activeSubtaskId, showPartLabel = false) => {
+  const hasSubtasks = !!(task.subtasks && task.subtasks.length > 0);
+  const currentSubtask = hasSubtasks
+    ? (task.subtasks.find((s) => s.id === activeSubtaskId) || task.subtasks[0])
+    : null;
+
+  const subtaskIndex = currentSubtask && task.subtasks
+    ? task.subtasks.findIndex((s) => s.id === currentSubtask.id)
+    : -1;
+
+  const displayedTitle = currentSubtask && showPartLabel
+    ? `Part ${subtaskIndex + 1}`
+    : null;
+
+  const displayedBrief = currentSubtask && currentSubtask.brief
+    ? currentSubtask.brief
+    : task.brief;
+
+  return { currentSubtask, subtaskIndex, displayedTitle, displayedBrief };
+};
+
+const multipartTestTask = {
+  id: 'multi-1',
+  title: 'The Secret Heist',
+  brief: 'Master brief for the secret heist.',
+  subtasks: [
+    { id: 'part-1', title: 'Pick the Lock', brief: 'Pick the lock without using your thumbs. Your time starts now.' },
+    { id: 'part-2', title: 'Crack the Safe', brief: 'Crack the safe while reciting the alphabet backwards.' },
+  ],
+};
+
+const singleTestTask = {
+  id: 'single-1',
+  title: 'Tower of Eggs',
+  brief: 'Build the highest tower of eggs. Highest tower wins.',
+};
+
+// 1. Multipart task with null activeSubtaskId -> defaults to Part 1
+const defaultMultipartView = resolveTaskBriefStageView(multipartTestTask, null, false);
+console.assert(defaultMultipartView.currentSubtask?.id === 'part-1', 'Multipart task should default to Part 1');
+console.assert(defaultMultipartView.displayedBrief === 'Pick the lock without using your thumbs. Your time starts now.', 'Should display Part 1 brief');
+console.assert(defaultMultipartView.displayedTitle === null, 'Should not display any title when showPartLabel is false');
+console.assert(defaultMultipartView.displayedTitle !== multipartTestTask.title, 'Should never display task title');
+console.assert(defaultMultipartView.displayedTitle !== multipartTestTask.subtasks[0].title, 'Should never display subtask title');
+console.log('✔ Multipart task defaults to Part 1 and hides task name');
+
+// 2. Multipart task with showPartLabel = true -> shows Part 1, never task name
+const labeledMultipartView = resolveTaskBriefStageView(multipartTestTask, null, true);
+console.assert(labeledMultipartView.displayedTitle === 'Part 1', 'Should display "Part 1" when showPartLabel is true');
+console.assert(!labeledMultipartView.displayedTitle.includes('The Secret Heist'), 'Should not include task title in Part label');
+console.assert(!labeledMultipartView.displayedTitle.includes('Pick the Lock'), 'Should not include subtask title in Part label');
+console.log('✔ Multipart task with part labels shows "Part 1" without task or subtask names');
+
+// 3. Multipart task with activeSubtaskId explicitly set to Part 2
+const part2View = resolveTaskBriefStageView(multipartTestTask, 'part-2', true);
+console.assert(part2View.currentSubtask?.id === 'part-2', 'Should resolve to Part 2');
+console.assert(part2View.displayedBrief === 'Crack the safe while reciting the alphabet backwards.', 'Should display Part 2 brief');
+console.assert(part2View.displayedTitle === 'Part 2', 'Should display "Part 2" for Part 2');
+console.log('✔ Explicit subtask selection resolves correctly without revealing task name');
+
+// 4. Single task -> never shows title, shows task brief
+const singleView = resolveTaskBriefStageView(singleTestTask, null, false);
+console.assert(singleView.currentSubtask === null, 'Single task has no subtask');
+console.assert(singleView.displayedTitle === null, 'Single task has no displayed title on stage brief');
+console.assert(singleView.displayedBrief === singleTestTask.brief, 'Single task displays task brief');
+console.log('✔ Single task never shows task name and correctly displays task brief');
+
+console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, bets, and task brief stage views verified successfully! 🎉');
+
 

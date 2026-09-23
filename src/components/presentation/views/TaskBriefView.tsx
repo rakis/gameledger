@@ -13,9 +13,10 @@ export const TaskBriefView: React.FC = () => {
     );
   }
 
-  // Active subtask if any
-  const currentSubtask = state.presentation.activeSubtaskId && activeTask.subtasks
-    ? activeTask.subtasks.find((s) => s.id === state.presentation.activeSubtaskId)
+  // Active subtask if any (defaults to part 1 for multipart tasks)
+  const hasSubtasks = !!(activeTask.subtasks && activeTask.subtasks.length > 0);
+  const currentSubtask = hasSubtasks
+    ? (activeTask.subtasks!.find((s) => s.id === state.presentation.activeSubtaskId) || activeTask.subtasks![0])
     : null;
 
   const subtaskIndex = currentSubtask && activeTask.subtasks
@@ -57,16 +58,19 @@ export const TaskBriefView: React.FC = () => {
 
   const showPartLabel = state.presentation.showPartLabel ?? activeTask.showPartLabel ?? false;
 
+  // Never show the name of the task on stage view; only show part number if part labels are enabled
   const displayedTitle = currentSubtask && showPartLabel
-    ? `${activeTask.title}: Part ${subtaskIndex + 1} - ${currentSubtask.title}`
-    : activeTask.title;
+    ? `Part ${subtaskIndex + 1}`
+    : null;
 
   const displayedBrief = currentSubtask && currentSubtask.brief
     ? currentSubtask.brief
     : activeTask.brief;
 
   const timeLimit = currentSubtask?.timeLimitSeconds ?? activeTask.timeLimitSeconds;
-  const isTimed = currentSubtask ? (currentSubtask.timeLimitSeconds !== undefined) : activeTask.isTimed;
+  const isTimed = currentSubtask
+    ? (currentSubtask.isTimed ?? (currentSubtask.timeLimitSeconds !== undefined))
+    : activeTask.isTimed;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 z-10">
@@ -101,10 +105,12 @@ export const TaskBriefView: React.FC = () => {
           </div>
         </div>
 
-        {/* Task Title */}
-        <h2 className="font-serif font-bold text-2xl md:text-4xl text-[#1a110a] mb-6 tracking-tight border-b-2 border-[#ccb88e] pb-4">
-          {displayedTitle}
-        </h2>
+        {/* Task Title (only shown for multipart tasks when part label is enabled, never showing task name) */}
+        {displayedTitle && (
+          <h2 className="font-serif font-bold text-2xl md:text-4xl text-[#1a110a] mb-6 tracking-tight border-b-2 border-[#ccb88e] pb-4">
+            {displayedTitle}
+          </h2>
+        )}
 
         {/* Task Brief Content in Typewriter Typography */}
         <div className="font-typewriter text-lg md:text-2xl text-[#261e18] leading-relaxed whitespace-pre-wrap tracking-wide font-medium">
