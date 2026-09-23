@@ -25,6 +25,10 @@ gameledger/
 ├── .github/workflows/
 │   └── deploy.yml            # Automated CI/CD pipeline for GitHub Pages
 ├── docs/
+│   ├── README.md             # Master documentation index & agent navigation hub
+│   ├── ARCHITECTURE.md       # Technical architecture, sync protocol, & procedural audio
+│   ├── SPECIFICATIONS.md     # Feature specifications, tie ranking, DQs, & scoring rules
+│   ├── AGENTIC_ENGINEERING.md# AI agent operating guide, implementation recipes, & invariants
 │   ├── SCHEMA.md             # Authoritative import/export schema specification
 │   └── gameledger.schema.json # Formal JSON Schema (Draft 2020-12)
 ├── public/
@@ -37,6 +41,8 @@ gameledger/
 │   │   │   ├── HostHeader.tsx
 │   │   │   ├── HostSummaryDrawer.tsx
 │   │   │   ├── NewTaskModal.tsx
+│   │   │   ├── PrintTasksContainer.tsx # Specialized print layout for physical task sheets
+│   │   │   ├── PrintTasksModal.tsx     # Print setup & options configurator modal
 │   │   │   ├── StageDirectorBar.tsx
 │   │   │   ├── TaskListSidebar.tsx
 │   │   │   └── TaskScorerPanel.tsx
@@ -56,13 +62,15 @@ gameledger/
 │   ├── types/
 │   │   └── index.ts          # Core TypeScript interfaces and type definitions
 │   ├── utils/
-│   │   └── audio.ts          # Web Audio API procedural sound cues
+│   │   ├── audio.ts          # Web Audio API procedural sound cues
+│   │   └── printTasks.ts     # Task envelope & sheet formatting / pagination
 │   ├── App.tsx               # View routing (Stage mode ?stage=true vs Host cockpit)
 │   ├── index.css             # Tailwind 4 theme + custom parchment & wax seal styling
 │   ├── main.tsx              # Application entry point
 │   └── vite-env.d.ts         # Vite client type references
 ├── tests/
-│   └── scoring.test.mjs      # Unit tests for scoring logic, DQs, and ranks
+│   ├── print.test.mjs        # Printable task formatting, durations, and pagination tests
+│   └── scoring.test.mjs      # Unit tests for scoring logic, ties, DQs, and ranks
 ├── index.html                # HTML entry point (relative favicon & script links)
 ├── package.json
 ├── tsconfig.json             # Strict TypeScript compiler options
@@ -87,8 +95,11 @@ npm run preview -- --port 5173
 
 ### Testing & Verification
 ```bash
-# Run unit test suite (scoring, ties, DQs, rank calculations)
+# Run unit test suite (scoring, ties, DQs, subtasks, rank calculations)
 npx tsx tests/scoring.test.mjs
+
+# Run printable task generation test suite
+npx tsx tests/print.test.mjs
 
 # Typecheck and build production bundle
 npm run build
@@ -141,6 +152,7 @@ npm run build
 Before proposing, committing, or closing any task:
 - [ ] Code passes TypeScript compilation without errors: `npm run build`
 - [ ] Scoring logic tests pass: `npx tsx tests/scoring.test.mjs`
+- [ ] Printable task tests pass: `npx tsx tests/print.test.mjs`
 - [ ] No unused variables, arguments, or imports
 - [ ] Dual-screen Presentation Mode tested or preserved
 - [ ] Git commit messages follow clear, descriptive imperative phrasing
