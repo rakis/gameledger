@@ -87,30 +87,38 @@ export const StageDirectorBar: React.FC = () => {
                 <Layers className="w-3 h-3" />
                 Part:
               </span>
-              <button
-                onClick={() => setActiveSubtask(null)}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-all ${
-                  !state.presentation.activeSubtaskId
-                    ? 'bg-amber-600 text-white font-bold shadow-sm'
-                    : 'text-stone-400 hover:text-stone-200'
-                }`}
-              >
-                Overview
-              </button>
-              {activeTask?.subtasks?.map((st, idx) => (
+              {currentView !== 'task_brief' && (
                 <button
-                  key={st.id}
-                  onClick={() => setActiveSubtask(st.id)}
-                  className={`px-2 py-0.5 rounded text-xs font-semibold transition-all ${
-                    state.presentation.activeSubtaskId === st.id
+                  onClick={() => setActiveSubtask(null)}
+                  className={`px-2 py-0.5 rounded text-xs font-semibold transition-all cursor-pointer ${
+                    !state.presentation.activeSubtaskId
                       ? 'bg-amber-600 text-white font-bold shadow-sm'
                       : 'text-stone-400 hover:text-stone-200'
                   }`}
-                  title={st.title}
                 >
-                  P{idx + 1}
+                  Overview
                 </button>
-              ))}
+              )}
+              {activeTask?.subtasks?.map((st, idx) => {
+                const isPartActive = currentView === 'task_brief'
+                  ? (state.presentation.activeSubtaskId === st.id || (!state.presentation.activeSubtaskId && idx === 0))
+                  : state.presentation.activeSubtaskId === st.id;
+
+                return (
+                  <button
+                    key={st.id}
+                    onClick={() => setActiveSubtask(st.id)}
+                    className={`px-2 py-0.5 rounded text-xs font-semibold transition-all cursor-pointer ${
+                      isPartActive
+                        ? 'bg-amber-600 text-white font-bold shadow-sm'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                    title={st.title}
+                  >
+                    P{idx + 1}
+                  </button>
+                );
+              })}
               <button
                 onClick={() => setShowPartLabel(!state.presentation.showPartLabel)}
                 className={`ml-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${

@@ -699,18 +699,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state, activeEpisode, broadcastState]);
 
   const setActiveTask = useCallback((id: string | null) => {
+    const task = id ? activeEpisode?.tasks.find((t) => t.id === id) : null;
+    const defaultSubtaskId = (task?.subtasks && task.subtasks.length > 0) ? task.subtasks[0].id : null;
     broadcastState({
       ...state,
       activeTaskId: id,
-      activeSubtaskId: null,
+      activeSubtaskId: defaultSubtaskId,
       presentation: {
         ...state.presentation,
-        activeSubtaskId: null,
+        activeSubtaskId: defaultSubtaskId,
         revealedContestantIds: [],
         revealedAll: false,
       },
     });
-  }, [state, broadcastState]);
+  }, [state, activeEpisode, broadcastState]);
 
   const reorderTasks = useCallback((fromIdx: number, toIdx: number) => {
     if (!activeEpisode) return;
@@ -1215,11 +1217,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Presentation / Stage Director actions
   const setPresentationView = useCallback((view: PresentationViewType) => {
+    const subtasks = activeTask?.subtasks;
+    const shouldDefaultSubtask = view === 'task_brief' && subtasks && subtasks.length > 0;
+    const nextSubtaskId = shouldDefaultSubtask && subtasks
+      ? (subtasks.some((st) => st.id === state.presentation.activeSubtaskId)
+          ? state.presentation.activeSubtaskId
+          : subtasks[0].id)
+      : state.presentation.activeSubtaskId;
+
     broadcastState({
       ...state,
+      activeSubtaskId: nextSubtaskId,
       presentation: {
         ...state.presentation,
         view,
+        activeSubtaskId: nextSubtaskId,
       },
     });
     if (view === 'task_brief') {
@@ -1228,7 +1240,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerSound('fanfare');
       triggerConfetti();
     }
-  }, [state, broadcastState, triggerSound, triggerConfetti]);
+  }, [state, activeTask, broadcastState, triggerSound, triggerConfetti]);
 
   const revealContestant = useCallback((contestantId: string) => {
     const revealed = state.presentation.revealedContestantIds.includes(contestantId)

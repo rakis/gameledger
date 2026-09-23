@@ -382,6 +382,23 @@ console.assert(singleView.displayedTitle === null, 'Single task has no displayed
 console.assert(singleView.displayedBrief === singleTestTask.brief, 'Single task displays task brief');
 console.log('✔ Single task never shows task name and correctly displays task brief');
 
+// 5. StageDirectorBar Overview visibility & active part logic
+const shouldShowOverviewButton = (view) => view !== 'task_brief';
+console.assert(!shouldShowOverviewButton('task_brief'), 'Overview button should be hidden in task_brief view');
+console.assert(shouldShowOverviewButton('attempts'), 'Overview button should be visible in attempts view');
+console.assert(shouldShowOverviewButton('score_reveal'), 'Overview button should be visible in score_reveal view');
+
+const isPartButtonActive = (view, activeSubtaskId, stId, idx) => {
+  return view === 'task_brief'
+    ? (activeSubtaskId === stId || (!activeSubtaskId && idx === 0))
+    : activeSubtaskId === stId;
+};
+
+console.assert(isPartButtonActive('task_brief', null, 'part-1', 0) === true, 'P1 should be active by default on task_brief when activeSubtaskId is null');
+console.assert(isPartButtonActive('task_brief', null, 'part-2', 1) === false, 'P2 should not be active by default on task_brief when activeSubtaskId is null');
+console.assert(isPartButtonActive('task_brief', 'part-2', 'part-2', 1) === true, 'P2 should be active when selected on task_brief');
+console.log('✔ StageDirectorBar hides Overview in task_brief and defaults P1 to active');
+
 console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, bets, and task brief stage views verified successfully! 🎉');
 
 
