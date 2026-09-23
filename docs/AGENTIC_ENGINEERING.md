@@ -168,7 +168,8 @@ Whenever introducing new fields to `GameLedgerState`, `Task`, `Episode`, or `Con
 
 Before closing any agentic task or presenting results to the user:
 
-- [ ] **Tests Pass**: Run `npx tsx tests/scoring.test.mjs` and `npx tsx tests/print.test.mjs`.
+- [ ] **Typecheck Passes**: Run `npm run typecheck` (`tsc --noEmit`) with 0 errors.
+- [ ] **All Tests Pass**: Run `npm test` (executing scoring, print, and architectural invariant tests).
 - [ ] **Clean Production Build**: Run `npm run build` (`tsc && vite build`) with 0 errors or warnings.
 - [ ] **No Dead Code**: Zero unused variables, imports, or stray `console.log` statements.
 - [ ] **Dual-Screen Sync Preserved**: Any new state is broadcast across `BroadcastChannel`.

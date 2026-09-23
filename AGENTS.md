@@ -95,11 +95,16 @@ npm run preview -- --port 5173
 
 ### Testing & Verification
 ```bash
-# Run unit test suite (scoring, ties, DQs, subtasks, rank calculations)
-npx tsx tests/scoring.test.mjs
+# Run full automated test suite (scoring, print, schema, and architectural invariants)
+npm test
 
-# Run printable task generation test suite
-npx tsx tests/print.test.mjs
+# Run individual test suites
+npm run test:scoring      # Scoring logic, ties, DQs, subtasks, rank calculations
+npm run test:print        # Printable task generation and formatting
+npm run test:invariants   # Architectural invariants, zero-asset audio, and schema validation
+
+# Run TypeScript typecheck (strict noEmit)
+npm run typecheck
 
 # Typecheck and build production bundle
 npm run build
@@ -150,9 +155,9 @@ npm run build
 ## 🧪 Definition of Done (Checklist)
 
 Before proposing, committing, or closing any task:
-- [ ] Code passes TypeScript compilation without errors: `npm run build`
-- [ ] Scoring logic tests pass: `npx tsx tests/scoring.test.mjs`
-- [ ] Printable task tests pass: `npx tsx tests/print.test.mjs`
+- [ ] Code passes TypeScript typecheck: `npm run typecheck`
+- [ ] All automated tests pass: `npm test`
+- [ ] Code builds production bundle without errors: `npm run build`
 - [ ] No unused variables, arguments, or imports
 - [ ] Dual-screen Presentation Mode tested or preserved
 - [ ] Git commit messages follow clear, descriptive imperative phrasing

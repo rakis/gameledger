@@ -66,11 +66,16 @@ npm install
 # Start local development server (port 5173)
 npm run dev
 
-# Run scoring logic, tie ranking, and sit-out test suite
-npx tsx tests/scoring.test.mjs
+# Run full test suite (scoring, print, schema, and architectural invariants)
+npm test
 
-# Run printable task generation test suite
-npx tsx tests/print.test.mjs
+# Run individual test suites
+npm run test:scoring      # Scoring logic, ties, DQs, subtasks, rank calculations
+npm run test:print        # Printable task generation and formatting
+npm run test:invariants   # Architectural invariants, zero-asset audio, and schema validation
+
+# Run TypeScript typecheck (strict noEmit)
+npm run typecheck
 
 # Typecheck and build production bundle
 npm run build
