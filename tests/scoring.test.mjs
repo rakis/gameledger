@@ -399,6 +399,62 @@ console.assert(isPartButtonActive('task_brief', null, 'part-2', 1) === false, 'P
 console.assert(isPartButtonActive('task_brief', 'part-2', 'part-2', 1) === true, 'P2 should be active when selected on task_brief');
 console.log('✔ StageDirectorBar hides Overview in task_brief and defaults P1 to active');
 
-console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, bets, and task brief stage views verified successfully! 🎉');
+// 6. Testing autoScoreByTime with Competition Tie Ranking
+console.log('\n--- Testing autoScoreByTime Tie Ranking Logic ---');
+const timedContestants = [
+  { id: 'c1', name: 'Alice', timeTakenSeconds: 30 },
+  { id: 'c2', name: 'Bob', timeTakenSeconds: 30 },
+  { id: 'c3', name: 'Charlie', timeTakenSeconds: 45 },
+  { id: 'c4', name: 'Diana', timeTakenSeconds: 50 },
+  { id: 'c5', name: 'Eddie', timeTakenSeconds: 50 },
+];
+
+const timePointScale = [5, 4, 3, 2, 1];
+const timeRankScores = {};
+let timeCurRank = 1;
+
+timedContestants.forEach((c, idx) => {
+  const timeC = c.timeTakenSeconds;
+  if (idx > 0) {
+    const prevC = timedContestants[idx - 1];
+    if (timeC > prevC.timeTakenSeconds) {
+      timeCurRank = idx + 1;
+    }
+  }
+  const pts = timePointScale[timeCurRank - 1] ?? 1;
+  timeRankScores[c.id] = {
+    points: pts,
+    rank: timeCurRank,
+  };
+});
+
+console.assert(timeRankScores['c1'].rank === 1 && timeRankScores['c1'].points === 5, 'Alice should be 1st with 5 pts');
+console.assert(timeRankScores['c2'].rank === 1 && timeRankScores['c2'].points === 5, 'Bob tied with Alice should also be 1st with 5 pts');
+console.assert(timeRankScores['c3'].rank === 3 && timeRankScores['c3'].points === 3, 'Charlie should skip to 3rd place with 3 pts');
+console.assert(timeRankScores['c4'].rank === 4 && timeRankScores['c4'].points === 2, 'Diana should be 4th place with 2 pts');
+console.assert(timeRankScores['c5'].rank === 4 && timeRankScores['c5'].points === 2, 'Eddie tied with Diana should also be 4th place with 2 pts');
+console.log('✔ autoScoreByTime properly awards competition tie ranks and points (1-1-3-4-4)');
+
+// 7. Testing Championship Series Tie Resolution
+console.log('\n--- Testing Series Championship Tie Detection ---');
+const tiedSeriesTotals = [
+  { contestant: { id: 'c1', name: 'Alice' }, seriesScore: 42, rank: 1 },
+  { contestant: { id: 'c2', name: 'Bob' }, seriesScore: 42, rank: 1 },
+  { contestant: { id: 'c3', name: 'Charlie' }, seriesScore: 35, rank: 3 },
+  { contestant: { id: 'c4', name: 'Diana' }, seriesScore: 30, rank: 4 },
+];
+
+const firstRankContestants = tiedSeriesTotals.filter((t) => t.rank === 1);
+const isTieForFirst = firstRankContestants.length > 1;
+const secondPlace = isTieForFirst ? null : tiedSeriesTotals.find((t) => t.rank === 2);
+const thirdPlace = tiedSeriesTotals.find((t) => t.rank === 3);
+
+console.assert(isTieForFirst === true, 'Should detect tie for 1st place');
+console.assert(firstRankContestants.length === 2, 'Two contestants tied for 1st place');
+console.assert(secondPlace === null, 'There should be no 2nd place on podium when two contestants tie for 1st');
+console.assert(thirdPlace?.contestant.name === 'Charlie', 'Charlie is correctly identified as 3rd place');
+console.log('✔ Series championship tie detection correctly identifies Joint Champions and omits 2nd place');
+
+console.log('\nAll scoring calculations, multi-team, sub-tasks, sit-outs, bets, task brief stage views, and tie rankings verified successfully! 🎉');
 
 

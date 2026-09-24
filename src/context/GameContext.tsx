@@ -36,6 +36,7 @@ interface ContestantTotal {
 interface GameContextType {
   state: GameLedgerState;
   isStageMode: boolean;
+  isStageConnected: boolean;
   activeEpisode: Episode | undefined;
   activeTask: Task | undefined;
   activeSubtask: SubTask | undefined;
@@ -260,6 +261,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   stateRef.current = state;
   const channelRef = useRef<BroadcastChannel | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
+  const [isStageConnected, setIsStageConnected] = useState<boolean>(false);
+  const lastStagePongRef = useRef<number>(0);
 
   // Audio helper
   const playAudioCue = useCallback((sound: SoundType) => {
@@ -300,7 +303,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Initialize BroadcastChannel
+  // Initialize BroadcastChannel & Heartbeat
   useEffect(() => {
     if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
 
@@ -321,16 +324,69 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else if (msg.type === 'CONFETTI_BURST') {
         runConfettiAnimation();
+      } else if (msg.type === 'STAGE_PING') {
+        if (isStageMode) {
+          channelRef.current?.postMessage({ type: 'STAGE_PONG' } as BroadcastMessage);
+        }
+      } else if (msg.type === 'STAGE_PONG') {
+        if (!isStageMode) {
+          lastStagePongRef.current = Date.now();
+          setIsStageConnected(true);
+        }
       }
     };
+
+    // If mounting in Stage mode, announce presence immediately
+    if (isStageMode) {
+      channel.postMessage({ type: 'STAGE_PONG' } as BroadcastMessage);
+    }
 
     return () => {
       channel.close();
       channelRef.current = null;
     };
-  }, [playAudioCue, runConfettiAnimation]);
+  }, [isStageMode, playAudioCue, runConfettiAnimation]);
 
-  // Persist state to LocalStorage and broadcast changes (Host only) using functional updates
+  // Stage Heartbeat Monitor (Host Cockpit only)
+  useEffect(() => {
+    if (isStageMode || typeof window === 'undefined') return;
+
+    // Send initial ping
+    channelRef.current?.postMessage({ type: 'STAGE_PING' } as BroadcastMessage);
+
+    const pingInterval = window.setInterval(() => {
+      channelRef.current?.postMessage({ type: 'STAGE_PING' } as BroadcastMessage);
+      const isAlive = (Date.now() - lastStagePongRef.current) < 10000;
+      setIsStageConnected(isAlive);
+    }, 3000);
+
+    return () => {
+      clearInterval(pingInterval);
+    };
+  }, [isStageMode]);
+
+  // Fallback persistence sync via StorageEvent (for cross-tab resilience)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          const next = ensureStateDefaults(parsed);
+          stateRef.current = next;
+          setState(next);
+        } catch (err) {
+          console.warn('Failed to parse storage event state', err);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Persist state to LocalStorage and broadcast changes using functional updates
   const updateAndBroadcastState = useCallback((updater: (prev: GameLedgerState) => GameLedgerState) => {
     setState((prev) => {
       const next = ensureStateDefaults(updater(prev));
@@ -369,18 +425,25 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } as BroadcastMessage);
   }, [runConfettiAnimation]);
 
-  // Timer runner
+  // Timer runner (Host is single source of truth; Stage display never runs intervals)
   useEffect(() => {
+    if (isStageMode) return;
+
     if (state.timer.isRunning) {
+      let lastTick = Date.now();
       timerIntervalRef.current = window.setInterval(() => {
-        setState((prev) => {
+        const now = Date.now();
+        const deltaSeconds = Math.max(1, Math.round((now - lastTick) / 1000));
+        lastTick = now;
+
+        updateAndBroadcastState((prev) => {
           if (!prev.timer.isRunning) return prev;
 
           let newSeconds = prev.timer.seconds;
           let shouldStop = false;
 
           if (prev.timer.isCountdown) {
-            newSeconds = Math.max(0, prev.timer.seconds - 1);
+            newSeconds = Math.max(0, prev.timer.seconds - deltaSeconds);
             if (newSeconds === 0) {
               shouldStop = true;
               triggerSound('buzzer');
@@ -388,10 +451,10 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
               triggerSound('tick');
             }
           } else {
-            newSeconds = prev.timer.seconds + 1;
+            newSeconds = prev.timer.seconds + deltaSeconds;
           }
 
-          const updated: GameLedgerState = {
+          return {
             ...prev,
             timer: {
               ...prev.timer,
@@ -399,13 +462,6 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
               isRunning: !shouldStop,
             },
           };
-
-          channelRef.current?.postMessage({
-            type: 'STATE_UPDATE',
-            state: updated,
-          } as BroadcastMessage);
-
-          return updated;
         });
       }, 1000);
     } else {
@@ -420,7 +476,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, [state.timer.isRunning, state.timer.isCountdown, triggerSound]);
+  }, [isStageMode, state.timer.isRunning, state.timer.isCountdown, triggerSound, updateAndBroadcastState]);
 
   // Active episode, task, and subtask computed
   const activeEpisode = state.episodes.find((e) => e.id === state.activeEpisodeId) || state.episodes[0];
@@ -522,210 +578,243 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Contestant actions
   const addContestant = useCallback((name: string, colorHex?: string, avatar?: string) => {
-    const palette = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
-    const emojis = ['👑', '⭐', '🎩', '🦁', '🦉', '🦊', '🦆', '🦔', '🦄', '🐝'];
-    
-    const newContestant: Contestant = {
-      id: 'c_' + Date.now() + Math.random().toString(36).substring(2, 5),
-      name: name.trim(),
-      seatIndex: state.contestants.length,
-      colorHex: colorHex || palette[state.contestants.length % palette.length],
-      avatar: avatar || emojis[state.contestants.length % emojis.length],
-      teamId: state.contestants.length % 2 === 0 ? 'A' : 'B',
-    };
-
-    broadcastState({
-      ...state,
-      contestants: [...state.contestants, newContestant],
+    updateAndBroadcastState((prev) => {
+      const palette = ['#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
+      const emojis = ['👑', '⭐', '🎩', '🦁', '🦉', '🦊', '🦆', '🦔', '🦄', '🐝'];
+      const newContestant: Contestant = {
+        id: 'c_' + Date.now() + Math.random().toString(36).substring(2, 5),
+        name: name.trim(),
+        seatIndex: prev.contestants.length,
+        colorHex: colorHex || palette[prev.contestants.length % palette.length],
+        avatar: avatar || emojis[prev.contestants.length % emojis.length],
+        teamId: prev.contestants.length % 2 === 0 ? 'A' : 'B',
+      };
+      return {
+        ...prev,
+        contestants: [...prev.contestants, newContestant],
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const updateContestant = useCallback((id: string, updates: Partial<Contestant>) => {
-    const updated = state.contestants.map((c) => (c.id === id ? { ...c, ...updates } : c));
-    broadcastState({ ...state, contestants: updated });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      contestants: prev.contestants.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    }));
+  }, [updateAndBroadcastState]);
 
   const removeContestant = useCallback((id: string) => {
-    const updated = state.contestants.filter((c) => c.id !== id);
-    broadcastState({ ...state, contestants: updated });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      contestants: prev.contestants.filter((c) => c.id !== id),
+    }));
+  }, [updateAndBroadcastState]);
 
   const reorderContestants = useCallback((fromIdx: number, toIdx: number) => {
-    const list = [...state.contestants];
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    const updated = list.map((c, idx) => ({ ...c, seatIndex: idx }));
-    broadcastState({ ...state, contestants: updated });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => {
+      const list = [...prev.contestants];
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      const updated = list.map((c, idx) => ({ ...c, seatIndex: idx }));
+      return { ...prev, contestants: updated };
+    });
+  }, [updateAndBroadcastState]);
 
   // Team actions
   const addTeam = useCallback((name: string, colorHex?: string, avatar?: string) => {
-    const palette = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
-    const emojis = ['🦁', '🐯', '🦉', '🦊', '👑', '⚡', '🔥', '⭐'];
-    const currentTeams = state.teams || DEFAULT_TEAMS;
-    const newTeam: Team = {
-      id: 'team_' + Date.now(),
-      name: name.trim() || `Team ${currentTeams.length + 1}`,
-      colorHex: colorHex || palette[currentTeams.length % palette.length],
-      avatar: avatar || emojis[currentTeams.length % emojis.length],
-    };
-
-    broadcastState({
-      ...state,
-      teams: [...currentTeams, newTeam],
+    updateAndBroadcastState((prev) => {
+      const palette = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
+      const emojis = ['🦁', '🐯', '🦉', '🦊', '👑', '⚡', '🔥', '⭐'];
+      const currentTeams = prev.teams || DEFAULT_TEAMS;
+      const newTeam: Team = {
+        id: 'team_' + Date.now(),
+        name: name.trim() || `Team ${currentTeams.length + 1}`,
+        colorHex: colorHex || palette[currentTeams.length % palette.length],
+        avatar: avatar || emojis[currentTeams.length % emojis.length],
+      };
+      return {
+        ...prev,
+        teams: [...currentTeams, newTeam],
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const updateTeam = useCallback((id: string, updates: Partial<Team>) => {
-    const currentTeams = state.teams || DEFAULT_TEAMS;
-    const updated = currentTeams.map((tm) => (tm.id === id ? { ...tm, ...updates } : tm));
-    broadcastState({ ...state, teams: updated });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => {
+      const currentTeams = prev.teams || DEFAULT_TEAMS;
+      const updated = currentTeams.map((tm) => (tm.id === id ? { ...tm, ...updates } : tm));
+      return { ...prev, teams: updated };
+    });
+  }, [updateAndBroadcastState]);
 
   const removeTeam = useCallback((id: string) => {
-    const currentTeams = state.teams || DEFAULT_TEAMS;
-    if (currentTeams.length <= 2) return; // Keep at least 2 teams
-    const updated = currentTeams.filter((tm) => tm.id !== id);
-    // Any contestant in this team resets to null
-    const updatedContestants = state.contestants.map((c) => (c.teamId === id ? { ...c, teamId: null } : c));
-    broadcastState({ ...state, teams: updated, contestants: updatedContestants });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => {
+      const currentTeams = prev.teams || DEFAULT_TEAMS;
+      if (currentTeams.length <= 2) return prev; // Keep at least 2 teams
+      const updated = currentTeams.filter((tm) => tm.id !== id);
+      const updatedContestants = prev.contestants.map((c) => (c.teamId === id ? { ...c, teamId: null } : c));
+      return { ...prev, teams: updated, contestants: updatedContestants };
+    });
+  }, [updateAndBroadcastState]);
 
   // Episode actions
   const addEpisode = useCallback((title?: string) => {
-    const num = state.episodes.length + 1;
-    const newEp: Episode = {
-      id: 'ep_' + Date.now(),
-      episodeNumber: num,
-      title: title || `Episode ${num}`,
-      tasks: [
-        {
-          id: 't_' + Date.now(),
-          title: 'Prize Task',
-          brief: 'Bring in the most magnificent item. Most magnificent wins.',
-          type: 'prize',
-          isTimed: false,
-          orderIndex: 0,
-          scores: {},
-        },
-      ],
-    };
-    broadcastState({
-      ...state,
-      episodes: [...state.episodes, newEp],
-      activeEpisodeId: newEp.id,
-      activeTaskId: newEp.tasks[0].id,
+    updateAndBroadcastState((prev) => {
+      const num = prev.episodes.length + 1;
+      const newEp: Episode = {
+        id: 'ep_' + Date.now(),
+        episodeNumber: num,
+        title: title || `Episode ${num}`,
+        tasks: [
+          {
+            id: 't_' + Date.now(),
+            title: 'Prize Task',
+            brief: 'Bring in the most magnificent item. Most magnificent wins.',
+            type: 'prize',
+            isTimed: false,
+            orderIndex: 0,
+            scores: {},
+          },
+        ],
+      };
+      return {
+        ...prev,
+        episodes: [...prev.episodes, newEp],
+        activeEpisodeId: newEp.id,
+        activeTaskId: newEp.tasks[0].id,
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const setActiveEpisode = useCallback((id: string) => {
-    const ep = state.episodes.find((e) => e.id === id);
-    broadcastState({
-      ...state,
-      activeEpisodeId: id,
-      activeTaskId: ep?.tasks[0]?.id || null,
+    updateAndBroadcastState((prev) => {
+      const ep = prev.episodes.find((e) => e.id === id);
+      return {
+        ...prev,
+        activeEpisodeId: id,
+        activeTaskId: ep?.tasks[0]?.id || null,
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const updateEpisode = useCallback((id: string, updates: Partial<Episode>) => {
-    const updated = state.episodes.map((e) => (e.id === id ? { ...e, ...updates } : e));
-    broadcastState({ ...state, episodes: updated });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+    }));
+  }, [updateAndBroadcastState]);
 
   const removeEpisode = useCallback((id: string) => {
-    if (state.episodes.length <= 1) return; // Keep at least one episode
-    const updated = state.episodes.filter((e) => e.id !== id);
-    const nextActive = updated[0]?.id || '';
-    broadcastState({
-      ...state,
-      episodes: updated,
-      activeEpisodeId: nextActive,
-      activeTaskId: updated[0]?.tasks[0]?.id || null,
+    updateAndBroadcastState((prev) => {
+      if (prev.episodes.length <= 1) return prev; // Keep at least one episode
+      const updated = prev.episodes.filter((e) => e.id !== id);
+      const nextActive = updated[0]?.id || '';
+      return {
+        ...prev,
+        episodes: updated,
+        activeEpisodeId: nextActive,
+        activeTaskId: updated[0]?.tasks[0]?.id || null,
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   // Task actions
   const addTask = useCallback((taskData: Omit<Task, 'id' | 'orderIndex' | 'scores'>) => {
-    if (!activeEpisode) return;
-    const newTask: Task = {
-      ...taskData,
-      id: 't_' + Date.now(),
-      orderIndex: activeEpisode.tasks.length,
-      scores: {},
-    };
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      if (!currentActiveEp) return prev;
 
-    const updatedEpisodes = state.episodes.map((ep) => {
-      if (ep.id === activeEpisode.id) {
-        return {
-          ...ep,
-          tasks: [...ep.tasks, newTask],
-        };
-      }
-      return ep;
-    });
+      const newTask: Task = {
+        ...taskData,
+        id: 't_' + Date.now(),
+        orderIndex: currentActiveEp.tasks.length,
+        scores: {},
+      };
 
-    broadcastState({
-      ...state,
-      episodes: updatedEpisodes,
-      activeTaskId: newTask.id,
-      presentation: {
-        ...state.presentation,
-        view: 'task_brief',
-        revealedContestantIds: [],
-        revealedAll: false,
-      },
+      const updatedEpisodes = prev.episodes.map((ep) => {
+        if (ep.id === currentActiveEp.id) {
+          return {
+            ...ep,
+            tasks: [...ep.tasks, newTask],
+          };
+        }
+        return ep;
+      });
+
+      return {
+        ...prev,
+        episodes: updatedEpisodes,
+        activeTaskId: newTask.id,
+        presentation: {
+          ...prev.presentation,
+          view: 'task_brief',
+          revealedContestantIds: [],
+          revealedAll: false,
+        },
+      };
     });
     triggerSound('seal');
-  }, [state, activeEpisode, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+      })),
     }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const removeTask = useCallback((id: string) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.filter((t) => t.id !== id),
-    }));
-    broadcastState({
-      ...state,
-      episodes: updatedEpisodes,
-      activeTaskId: activeEpisode?.tasks.find((t) => t.id !== id)?.id || null,
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.filter((t) => t.id !== id),
+      }));
+      return {
+        ...prev,
+        episodes: updatedEpisodes,
+        activeTaskId: currentActiveEp?.tasks.find((t) => t.id !== id)?.id || null,
+      };
     });
-  }, [state, activeEpisode, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const setActiveTask = useCallback((id: string | null) => {
-    const task = id ? activeEpisode?.tasks.find((t) => t.id === id) : null;
-    const defaultSubtaskId = (task?.subtasks && task.subtasks.length > 0) ? task.subtasks[0].id : null;
-    broadcastState({
-      ...state,
-      activeTaskId: id,
-      activeSubtaskId: defaultSubtaskId,
-      presentation: {
-        ...state.presentation,
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const task = id ? currentActiveEp?.tasks.find((t) => t.id === id) : null;
+      const defaultSubtaskId = (task?.subtasks && task.subtasks.length > 0) ? task.subtasks[0].id : null;
+      return {
+        ...prev,
+        activeTaskId: id,
         activeSubtaskId: defaultSubtaskId,
-        revealedContestantIds: [],
-        revealedAll: false,
-      },
+        presentation: {
+          ...prev.presentation,
+          activeSubtaskId: defaultSubtaskId,
+          revealedContestantIds: [],
+          revealedAll: false,
+        },
+      };
     });
-  }, [state, activeEpisode, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const reorderTasks = useCallback((fromIdx: number, toIdx: number) => {
-    if (!activeEpisode) return;
-    const list = [...activeEpisode.tasks];
-    const [moved] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, moved);
-    const updatedTasks = list.map((t, idx) => ({ ...t, orderIndex: idx }));
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      if (!currentActiveEp) return prev;
+      const list = [...currentActiveEp.tasks];
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      const updatedTasks = list.map((t, idx) => ({ ...t, orderIndex: idx }));
 
-    const updatedEpisodes = state.episodes.map((ep) =>
-      ep.id === activeEpisode.id ? { ...ep, tasks: updatedTasks } : ep
-    );
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, activeEpisode, broadcastState]);
+      const updatedEpisodes = prev.episodes.map((ep) =>
+        ep.id === currentActiveEp.id ? { ...ep, tasks: updatedTasks } : ep
+      );
+      return { ...prev, episodes: updatedEpisodes };
+    });
+  }, [updateAndBroadcastState]);
 
   // Scoring actions
   const setTaskScores = useCallback((
@@ -945,122 +1034,131 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Participant Assignment / Sit-out actions
   const setTaskAssignedContestants = useCallback((taskId: string, contestantIds: string[]) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const newScores = { ...t.scores };
-        state.contestants.forEach((c) => {
-          const isSatOut = !contestantIds.includes(c.id);
-          const currentEntry = newScores[c.id] || { contestantId: c.id, points: 0, isDisqualified: false };
-          newScores[c.id] = { ...currentEntry, isSatOut };
-        });
-        return { ...t, assignedContestantIds: contestantIds, scores: newScores };
-      }),
-    }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => {
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+          const newScores = { ...t.scores };
+          prev.contestants.forEach((c) => {
+            const isSatOut = !contestantIds.includes(c.id);
+            const currentEntry = newScores[c.id] || { contestantId: c.id, points: 0, isDisqualified: false };
+            newScores[c.id] = { ...currentEntry, isSatOut };
+          });
+          return { ...t, assignedContestantIds: contestantIds, scores: newScores };
+        }),
+      }));
+      return { ...prev, episodes: updatedEpisodes };
+    });
+  }, [updateAndBroadcastState]);
 
   const toggleContestantSitOut = useCallback((taskId: string, contestantId: string) => {
-    const currentEp = state.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
-    const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
-    if (!currentTask) return;
+    updateAndBroadcastState((prev) => {
+      const currentEp = prev.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
+      const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
+      if (!currentTask) return prev;
 
-    const currentAssigned = currentTask.assignedContestantIds && currentTask.assignedContestantIds.length > 0
-      ? [...currentTask.assignedContestantIds]
-      : state.contestants.map((c) => c.id);
+      const currentAssigned = currentTask.assignedContestantIds && currentTask.assignedContestantIds.length > 0
+        ? [...currentTask.assignedContestantIds]
+        : prev.contestants.map((c) => c.id);
 
-    let newAssigned: string[];
-    if (currentAssigned.includes(contestantId)) {
-      if (currentAssigned.length <= 1) return; // Must have at least 1 active contestant
-      newAssigned = currentAssigned.filter((id) => id !== contestantId);
-    } else {
-      newAssigned = [...currentAssigned, contestantId];
-    }
+      let newAssigned: string[];
+      if (currentAssigned.includes(contestantId)) {
+        if (currentAssigned.length <= 1) return prev; // Must have at least 1 active contestant
+        newAssigned = currentAssigned.filter((id) => id !== contestantId);
+      } else {
+        newAssigned = [...currentAssigned, contestantId];
+      }
 
-    const updatedScores = { ...currentTask.scores };
-    const isSatOut = !newAssigned.includes(contestantId);
-    updatedScores[contestantId] = {
-      ...(updatedScores[contestantId] || { contestantId, points: 0, isDisqualified: false }),
-      isSatOut,
-      points: isSatOut ? 0 : (updatedScores[contestantId]?.points ?? 0),
-    };
+      const updatedScores = { ...currentTask.scores };
+      const isSatOut = !newAssigned.includes(contestantId);
+      updatedScores[contestantId] = {
+        ...(updatedScores[contestantId] || { contestantId, points: 0, isDisqualified: false }),
+        isSatOut,
+        points: isSatOut ? 0 : (updatedScores[contestantId]?.points ?? 0),
+      };
 
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => (t.id === taskId ? { ...t, assignedContestantIds: newAssigned, scores: updatedScores } : t)),
-    }));
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => (t.id === taskId ? { ...t, assignedContestantIds: newAssigned, scores: updatedScores } : t)),
+      }));
 
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+      return { ...prev, episodes: updatedEpisodes };
+    });
+  }, [updateAndBroadcastState]);
 
   // Sub-task actions
   const addSubTask = useCallback((taskId: string, title?: string, brief?: string, isTimed?: boolean, timeLimitSeconds?: number) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const subtasks = t.subtasks || [];
-        const num = subtasks.length + 1;
-        const newSub: SubTask = {
-          id: 'sub_' + Date.now() + Math.random().toString(36).substring(2, 4),
-          title: title || `Part ${num}`,
-          brief: brief || `Instructions for Part ${num}. Your time starts now.`,
-          isTimed: isTimed ?? false,
-          timeLimitSeconds: isTimed ? (timeLimitSeconds || 300) : undefined,
-          scores: {},
-          orderIndex: subtasks.length,
-        };
-        return {
-          ...t,
-          subtasks: [...subtasks, newSub],
-          subtaskScoringMode: t.subtaskScoringMode || 'sum',
-        };
-      }),
-    }));
-
-    broadcastState({ ...state, episodes: updatedEpisodes });
+    updateAndBroadcastState((prev) => {
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+          const subtasks = t.subtasks || [];
+          const num = subtasks.length + 1;
+          const newSub: SubTask = {
+            id: 'sub_' + Date.now() + Math.random().toString(36).substring(2, 4),
+            title: title || `Part ${num}`,
+            brief: brief || `Instructions for Part ${num}. Your time starts now.`,
+            isTimed: isTimed ?? false,
+            timeLimitSeconds: isTimed ? (timeLimitSeconds || 300) : undefined,
+            scores: {},
+            orderIndex: subtasks.length,
+          };
+          return {
+            ...t,
+            subtasks: [...subtasks, newSub],
+            subtaskScoringMode: t.subtaskScoringMode || 'sum',
+          };
+        }),
+      }));
+      return { ...prev, episodes: updatedEpisodes };
+    });
     triggerSound('seal');
-  }, [state, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const updateSubTask = useCallback((taskId: string, subtaskId: string, updates: Partial<SubTask>) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId || !t.subtasks) return t;
-        return {
-          ...t,
-          subtasks: t.subtasks.map((st) => (st.id === subtaskId ? { ...st, ...updates } : st)),
-        };
-      }),
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId || !t.subtasks) return t;
+          return {
+            ...t,
+            subtasks: t.subtasks.map((st) => (st.id === subtaskId ? { ...st, ...updates } : st)),
+          };
+        }),
+      })),
     }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const removeSubTask = useCallback((taskId: string, subtaskId: string) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId || !t.subtasks) return t;
-        return {
-          ...t,
-          subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
-        };
-      }),
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId || !t.subtasks) return t;
+          return {
+            ...t,
+            subtasks: t.subtasks.filter((st) => st.id !== subtaskId),
+          };
+        }),
+      })),
     }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const setActiveSubtask = useCallback((subtaskId: string | null) => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       activeSubtaskId: subtaskId,
       presentation: {
-        ...state.presentation,
+        ...prev.presentation,
         activeSubtaskId: subtaskId,
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   const syncSubtaskScoresToParent = useCallback((taskId: string) => {
     updateAndBroadcastState((prev) => {
@@ -1085,154 +1183,170 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Spectator Betting actions
   const setTaskBet = useCallback((taskId: string, bettorId: string, bet: Omit<TaskBet, 'bettorId'>) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        return {
-          ...t,
-          bets: {
-            ...(t.bets || {}),
-            [bettorId]: { ...bet, bettorId },
-          },
-        };
-      }),
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+          return {
+            ...t,
+            bets: {
+              ...(t.bets || {}),
+              [bettorId]: { ...bet, bettorId },
+            },
+          };
+        }),
+      })),
     }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const removeTaskBet = useCallback((taskId: string, bettorId: string) => {
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => {
-        if (t.id !== taskId || !t.bets) return t;
-        const copy = { ...t.bets };
-        delete copy[bettorId];
-        return { ...t, bets: copy };
-      }),
+    updateAndBroadcastState((prev) => ({
+      ...prev,
+      episodes: prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => {
+          if (t.id !== taskId || !t.bets) return t;
+          const copy = { ...t.bets };
+          delete copy[bettorId];
+          return { ...t, bets: copy };
+        }),
+      })),
     }));
-    broadcastState({ ...state, episodes: updatedEpisodes });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const resolveTaskBets = useCallback((taskId: string) => {
-    const currentEp = state.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
-    const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
-    if (!currentTask || !currentTask.bets) return;
-
-    const assignedIds = currentTask.assignedContestantIds && currentTask.assignedContestantIds.length > 0
-      ? currentTask.assignedContestantIds
-      : state.contestants.map((c) => c.id);
-
-    // Determine active winners (Rank 1 and not DQ'd and not sat out)
-    const activeScored = assignedIds.map((cid) => currentTask.scores[cid]).filter(Boolean);
-    const eligibleScored = activeScored.filter((s) => !s.isDisqualified && !s.isSatOut);
-
-    const maxPoints = Math.max(...eligibleScored.map((s) => s.points || 0), -Infinity);
-    const winningContestantIds = eligibleScored
-      .filter((s) => (s.rank === 1 || s.points === maxPoints) && s.points > 0)
-      .map((s) => s.contestantId);
-
-    // Determine winning team(s) if applicable
-    const winningTeamIds: string[] = [];
-    if (currentTask.type === 'team') {
-      winningContestantIds.forEach((cid) => {
-        const c = state.contestants.find((cont) => cont.id === cid);
-        if (c?.teamId && !winningTeamIds.includes(c.teamId)) {
-          winningTeamIds.push(c.teamId);
-        }
-      });
-    }
-
     let someoneWon = false;
-    const updatedBets: Record<string, TaskBet> = { ...currentTask.bets };
-    const updatedScores: Record<string, ScoreEntry> = { ...currentTask.scores };
+    updateAndBroadcastState((prev) => {
+      const currentEp = prev.episodes.find((e) => e.tasks.some((t) => t.id === taskId));
+      const currentTask = currentEp?.tasks.find((t) => t.id === taskId);
+      if (!currentTask || !currentTask.bets) return prev;
 
-    Object.entries(updatedBets).forEach(([bettorId, bet]) => {
-      let won = false;
-      if (bet.targetContestantId && winningContestantIds.includes(bet.targetContestantId)) {
-        won = true;
+      const assignedIds = currentTask.assignedContestantIds && currentTask.assignedContestantIds.length > 0
+        ? currentTask.assignedContestantIds
+        : prev.contestants.map((c) => c.id);
+
+      // Determine active winners (Rank 1 and not DQ'd and not sat out)
+      const activeScored = assignedIds.map((cid) => currentTask.scores[cid]).filter(Boolean);
+      const eligibleScored = activeScored.filter((s) => !s.isDisqualified && !s.isSatOut);
+
+      const maxPoints = Math.max(...eligibleScored.map((s) => s.points || 0), -Infinity);
+      const winningContestantIds = eligibleScored
+        .filter((s) => (s.rank === 1 || s.points === maxPoints) && s.points > 0)
+        .map((s) => s.contestantId);
+
+      // Determine winning team(s) if applicable
+      const winningTeamIds: string[] = [];
+      if (currentTask.type === 'team') {
+        winningContestantIds.forEach((cid) => {
+          const c = prev.contestants.find((cont) => cont.id === cid);
+          if (c?.teamId && !winningTeamIds.includes(c.teamId)) {
+            winningTeamIds.push(c.teamId);
+          }
+        });
       }
-      if (bet.targetTeamId && winningTeamIds.includes(bet.targetTeamId)) {
-        won = true;
-      }
-      if (won) someoneWon = true;
 
-      updatedBets[bettorId] = { ...bet, isWon: won };
+      const updatedBets: Record<string, TaskBet> = { ...currentTask.bets };
+      const updatedScores: Record<string, ScoreEntry> = { ...currentTask.scores };
 
-      const targetContestant = state.contestants.find((c) => c.id === bet.targetContestantId);
-      const targetTeam = state.teams?.find((tm) => tm.id === bet.targetTeamId);
-      const targetName = targetContestant?.name || (targetTeam ? targetTeam.name : 'Unknown');
+      Object.entries(updatedBets).forEach(([bettorId, bet]) => {
+        let won = false;
+        if (bet.targetContestantId && winningContestantIds.includes(bet.targetContestantId)) {
+          won = true;
+        }
+        if (bet.targetTeamId && winningTeamIds.includes(bet.targetTeamId)) {
+          won = true;
+        }
+        if (won) someoneWon = true;
 
-      const reward = won ? Number(bet.rewardPoints || 2) : 0;
-      updatedScores[bettorId] = {
-        contestantId: bettorId,
-        points: reward,
-        bonusPoints: reward,
-        isDisqualified: false,
-        isSatOut: true,
-        attemptNote: `Spectator Bet on ${targetName}: ${won ? `WON (+${reward} pts)` : 'LOST (0 pts)'}`,
-      };
+        updatedBets[bettorId] = { ...bet, isWon: won };
+
+        const targetContestant = prev.contestants.find((c) => c.id === bet.targetContestantId);
+        const targetTeam = prev.teams?.find((tm) => tm.id === bet.targetTeamId);
+        const targetName = targetContestant?.name || (targetTeam ? targetTeam.name : 'Unknown');
+
+        const reward = won ? Number(bet.rewardPoints || 2) : 0;
+        updatedScores[bettorId] = {
+          contestantId: bettorId,
+          points: reward,
+          bonusPoints: reward,
+          isDisqualified: false,
+          isSatOut: true,
+          attemptNote: `Spectator Bet on ${targetName}: ${won ? `WON (+${reward} pts)` : 'LOST (0 pts)'}`,
+        };
+      });
+
+      const updatedEpisodes = prev.episodes.map((ep) => ({
+        ...ep,
+        tasks: ep.tasks.map((t) => (t.id === taskId ? { ...t, bets: updatedBets, scores: updatedScores } : t)),
+      }));
+
+      return { ...prev, episodes: updatedEpisodes };
     });
-
-    const updatedEpisodes = state.episodes.map((ep) => ({
-      ...ep,
-      tasks: ep.tasks.map((t) => (t.id === taskId ? { ...t, bets: updatedBets, scores: updatedScores } : t)),
-    }));
-
-    broadcastState({ ...state, episodes: updatedEpisodes });
 
     if (someoneWon) {
       triggerSound('reveal');
     } else {
       triggerSound('buzzer');
     }
-  }, [state, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const revealBet = useCallback((contestantId: string) => {
-    const currentRevealed = state.presentation.revealedBetContestantIds || [];
-    const updated = currentRevealed.includes(contestantId)
-      ? currentRevealed
-      : [...currentRevealed, contestantId];
-    broadcastState({
-      ...state,
-      presentation: {
-        ...state.presentation,
-        revealedBetContestantIds: updated,
-      },
+    updateAndBroadcastState((prev) => {
+      const currentRevealed = prev.presentation.revealedBetContestantIds || [];
+      const updated = currentRevealed.includes(contestantId)
+        ? currentRevealed
+        : [...currentRevealed, contestantId];
+      return {
+        ...prev,
+        presentation: {
+          ...prev.presentation,
+          revealedBetContestantIds: updated,
+        },
+      };
     });
     triggerSound('reveal');
-  }, [state, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const revealAllBets = useCallback(() => {
-    const allBettorIds = activeTask?.bets ? Object.keys(activeTask.bets) : [];
-    broadcastState({
-      ...state,
-      presentation: {
-        ...state.presentation,
-        revealedBetContestantIds: allBettorIds,
-      },
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const curTask = currentActiveEp?.tasks.find((t) => t.id === prev.activeTaskId) || currentActiveEp?.tasks[0];
+      const allBettorIds = curTask?.bets ? Object.keys(curTask.bets) : [];
+      return {
+        ...prev,
+        presentation: {
+          ...prev.presentation,
+          revealedBetContestantIds: allBettorIds,
+        },
+      };
     });
     triggerSound('reveal');
-  }, [state, activeTask, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   // Presentation / Stage Director actions
   const setPresentationView = useCallback((view: PresentationViewType) => {
-    const subtasks = activeTask?.subtasks;
-    const shouldDefaultSubtask = view === 'task_brief' && subtasks && subtasks.length > 0;
-    const nextSubtaskId = shouldDefaultSubtask && subtasks
-      ? (subtasks.some((st) => st.id === state.presentation.activeSubtaskId)
-          ? state.presentation.activeSubtaskId
-          : subtasks[0].id)
-      : state.presentation.activeSubtaskId;
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const curTask = currentActiveEp?.tasks.find((t) => t.id === prev.activeTaskId) || currentActiveEp?.tasks[0];
+      const subtasks = curTask?.subtasks;
+      const shouldDefaultSubtask = view === 'task_brief' && subtasks && subtasks.length > 0;
+      const nextSubtaskId = shouldDefaultSubtask && subtasks
+        ? (subtasks.some((st) => st.id === prev.presentation.activeSubtaskId)
+            ? prev.presentation.activeSubtaskId
+            : subtasks[0].id)
+        : prev.presentation.activeSubtaskId;
 
-    broadcastState({
-      ...state,
-      activeSubtaskId: nextSubtaskId,
-      presentation: {
-        ...state.presentation,
-        view,
+      return {
+        ...prev,
         activeSubtaskId: nextSubtaskId,
-      },
+        presentation: {
+          ...prev.presentation,
+          view,
+          activeSubtaskId: nextSubtaskId,
+        },
+      };
     });
     if (view === 'task_brief') {
       triggerSound('seal');
@@ -1240,52 +1354,60 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerSound('fanfare');
       triggerConfetti();
     }
-  }, [state, activeTask, broadcastState, triggerSound, triggerConfetti]);
+  }, [updateAndBroadcastState, triggerSound, triggerConfetti]);
 
   const revealContestant = useCallback((contestantId: string) => {
-    const revealed = state.presentation.revealedContestantIds.includes(contestantId)
-      ? state.presentation.revealedContestantIds
-      : [...state.presentation.revealedContestantIds, contestantId];
+    let isDQ = false;
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const curTask = currentActiveEp?.tasks.find((t) => t.id === prev.activeTaskId) || currentActiveEp?.tasks[0];
 
-    const assignedIds = activeTask?.assignedContestantIds && activeTask.assignedContestantIds.length > 0
-      ? activeTask.assignedContestantIds
-      : state.contestants.map((c) => c.id);
-    const allRevealed = assignedIds.every((id) => revealed.includes(id));
+      const revealed = prev.presentation.revealedContestantIds.includes(contestantId)
+        ? prev.presentation.revealedContestantIds
+        : [...prev.presentation.revealedContestantIds, contestantId];
 
-    broadcastState({
-      ...state,
-      presentation: {
-        ...state.presentation,
-        revealedContestantIds: revealed,
-        revealedAll: allRevealed,
-        spotlightContestantId: contestantId,
-      },
+      const assignedIds = curTask?.assignedContestantIds && curTask.assignedContestantIds.length > 0
+        ? curTask.assignedContestantIds
+        : prev.contestants.map((c) => c.id);
+      const allRevealed = assignedIds.every((id) => revealed.includes(id));
+
+      const activeSubtaskId = prev.presentation.activeSubtaskId;
+      const currentSubtask = activeSubtaskId && curTask?.subtasks
+        ? curTask.subtasks.find((st) => st.id === activeSubtaskId)
+        : null;
+      const scoreEntry = currentSubtask ? currentSubtask.scores[contestantId] : curTask?.scores[contestantId];
+      isDQ = scoreEntry?.isDisqualified ?? false;
+
+      return {
+        ...prev,
+        presentation: {
+          ...prev.presentation,
+          revealedContestantIds: revealed,
+          revealedAll: allRevealed,
+          spotlightContestantId: contestantId,
+        },
+      };
     });
 
-    // Check if contestant was DQ'd or scored
-    const activeSubtaskId = state.presentation.activeSubtaskId;
-    const currentSubtask = activeSubtaskId && activeTask?.subtasks
-      ? activeTask.subtasks.find((st) => st.id === activeSubtaskId)
-      : null;
-    const scoreEntry = currentSubtask ? currentSubtask.scores[contestantId] : activeTask?.scores[contestantId];
-    if (scoreEntry?.isDisqualified) {
+    if (isDQ) {
       triggerSound('dq');
     } else {
       triggerSound('reveal');
     }
-  }, [state, activeTask, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const revealNextScore = useCallback(() => {
-    if (!activeTask) return;
-    const assignedIds = activeTask.assignedContestantIds && activeTask.assignedContestantIds.length > 0
-      ? activeTask.assignedContestantIds
+    const curTask = activeTask;
+    if (!curTask) return;
+    const assignedIds = curTask.assignedContestantIds && curTask.assignedContestantIds.length > 0
+      ? curTask.assignedContestantIds
       : state.contestants.map((c) => c.id);
 
     const activeSubtaskId = state.presentation.activeSubtaskId;
-    const currentSubtask = activeSubtaskId && activeTask.subtasks
-      ? activeTask.subtasks.find((st) => st.id === activeSubtaskId)
+    const currentSubtask = activeSubtaskId && curTask.subtasks
+      ? curTask.subtasks.find((st) => st.id === activeSubtaskId)
       : null;
-    const scoresToEvaluate = currentSubtask?.scores || activeTask.scores;
+    const scoresToEvaluate = currentSubtask?.scores || curTask.scores;
 
     // Reveal from lowest to highest points for maximum drama among assigned contestants
     const unrevealed = state.contestants
@@ -1299,111 +1421,119 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (unrevealed.length > 0) {
       revealContestant(unrevealed[0].id);
     }
-  }, [activeTask, state.contestants, state.presentation.revealedContestantIds, revealContestant]);
+  }, [activeTask, state.contestants, state.presentation.revealedContestantIds, state.presentation.activeSubtaskId, revealContestant]);
 
   const revealAllScores = useCallback(() => {
-    const assignedIds = activeTask?.assignedContestantIds && activeTask.assignedContestantIds.length > 0
-      ? activeTask.assignedContestantIds
-      : state.contestants.map((c) => c.id);
-    broadcastState({
-      ...state,
-      presentation: {
-        ...state.presentation,
-        revealedContestantIds: assignedIds,
-        revealedAll: true,
-      },
+    updateAndBroadcastState((prev) => {
+      const currentActiveEp = prev.episodes.find((e) => e.id === prev.activeEpisodeId) || prev.episodes[0];
+      const curTask = currentActiveEp?.tasks.find((t) => t.id === prev.activeTaskId) || currentActiveEp?.tasks[0];
+      const assignedIds = curTask?.assignedContestantIds && curTask.assignedContestantIds.length > 0
+        ? curTask.assignedContestantIds
+        : prev.contestants.map((c) => c.id);
+      return {
+        ...prev,
+        presentation: {
+          ...prev.presentation,
+          revealedContestantIds: assignedIds,
+          revealedAll: true,
+        },
+      };
     });
     triggerSound('reveal');
-  }, [state, activeTask, broadcastState, triggerSound]);
+  }, [updateAndBroadcastState, triggerSound]);
 
   const resetReveals = useCallback(() => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       presentation: {
-        ...state.presentation,
+        ...prev.presentation,
         revealedContestantIds: [],
         revealedAll: false,
         spotlightContestantId: null,
         revealedBetContestantIds: [],
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   const setDisplayMessage = useCallback((msg: string | null) => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       presentation: {
-        ...state.presentation,
+        ...prev.presentation,
         displayMessage: msg,
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   const setBannerVisible = useCallback((visible: boolean) => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       presentation: {
-        ...state.presentation,
+        ...prev.presentation,
         bannerVisible: visible,
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   const setShowPartLabel = useCallback((visible: boolean) => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       presentation: {
-        ...state.presentation,
+        ...prev.presentation,
         showPartLabel: visible,
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   // Timer actions
   const startTimer = useCallback((countdownSeconds?: number) => {
-    const isCountdown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
-    broadcastState({
-      ...state,
-      timer: {
-        isRunning: true,
-        seconds: isCountdown ? countdownSeconds : state.timer.seconds,
-        initialLimit: isCountdown ? countdownSeconds : state.timer.initialLimit,
-        isCountdown,
-      },
+    updateAndBroadcastState((prev) => {
+      const isCountdown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
+      return {
+        ...prev,
+        timer: {
+          isRunning: true,
+          seconds: isCountdown ? countdownSeconds : prev.timer.seconds,
+          initialLimit: isCountdown ? countdownSeconds : prev.timer.initialLimit,
+          isCountdown,
+        },
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   const pauseTimer = useCallback(() => {
-    broadcastState({
-      ...state,
+    updateAndBroadcastState((prev) => ({
+      ...prev,
       timer: {
-        ...state.timer,
+        ...prev.timer,
         isRunning: false,
       },
-    });
-  }, [state, broadcastState]);
+    }));
+  }, [updateAndBroadcastState]);
 
   const resetTimer = useCallback((countdownSeconds?: number) => {
-    const isCountdown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
-    broadcastState({
-      ...state,
-      timer: {
-        isRunning: false,
-        seconds: isCountdown ? countdownSeconds : 0,
-        initialLimit: isCountdown ? countdownSeconds : null,
-        isCountdown,
-      },
+    updateAndBroadcastState((prev) => {
+      const isCountdown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
+      return {
+        ...prev,
+        timer: {
+          isRunning: false,
+          seconds: isCountdown ? countdownSeconds : 0,
+          initialLimit: isCountdown ? countdownSeconds : null,
+          isCountdown,
+        },
+      };
     });
-  }, [state, broadcastState]);
+  }, [updateAndBroadcastState]);
 
   // General settings & import/export
   const setSeriesTitle = useCallback((title: string) => {
-    broadcastState({ ...state, seriesTitle: title });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => ({ ...prev, seriesTitle: title }));
+  }, [updateAndBroadcastState]);
 
   const toggleSound = useCallback(() => {
-    broadcastState({ ...state, soundEnabled: !state.soundEnabled });
-  }, [state, broadcastState]);
+    updateAndBroadcastState((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }));
+  }, [updateAndBroadcastState]);
 
   const openStageWindow = useCallback(() => {
     const url = new URL(window.location.href);
@@ -1448,6 +1578,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         state,
         isStageMode,
+        isStageConnected,
         activeEpisode,
         activeTask,
         activeSubtask,

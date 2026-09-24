@@ -20,6 +20,7 @@ import {
 export const StageDirectorBar: React.FC = () => {
   const {
     state,
+    isStageConnected,
     activeTask,
     setPresentationView,
     setActiveSubtask,
@@ -54,6 +55,16 @@ export const StageDirectorBar: React.FC = () => {
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-black/60 border border-stone-700 text-stone-300 text-xs font-semibold mr-1">
             <Tv className="w-3.5 h-3.5 text-tm-gold" />
             <span className="text-[11px] uppercase tracking-wider text-tm-gold font-bold">TV View:</span>
+            <span
+              className={`w-2 h-2 rounded-full ml-0.5 ${
+                isStageConnected ? 'bg-emerald-400 animate-pulse' : 'bg-stone-600'
+              }`}
+              title={
+                isStageConnected
+                  ? 'TV stage display is connected and receiving real-time sync'
+                  : 'No TV stage display detected (standby)'
+              }
+            />
           </div>
 
           <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800 flex-wrap">

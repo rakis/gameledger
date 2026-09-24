@@ -81,8 +81,12 @@ export type BroadcastMessage =
 ```
 
 ### State Mutations & Concurrency Invariants
-- **Atomic Functional State Updates**: State transitions use `setState((prev) => ...)` to eliminate race conditions between rapid operator score inputs and active stopwatch/countdown ticks.
+- **Atomic Functional State Updates**: State transitions use `updateAndBroadcastState((prev) => ...)` to eliminate race conditions between rapid operator score inputs and active stopwatch/countdown ticks.
+- **Timer Authority Invariant**: The Host Cockpit (`!isStageMode`) is the sole authoritative clock runner; the Stage display passively renders incoming timer state to prevent dual-timer race conditions.
+- **Monotonic Clock Accounting**: Timer ticks calculate elapsed delta seconds to prevent clock drift when background browser tabs are throttled.
+- **Stage Heartbeat Protocol**: Host sends `STAGE_PING` to monitor stage connectivity (`STAGE_PONG`), providing live visual feedback (`isStageConnected`) in the operator view.
 - **State Defaults Hydration**: Whenever state is loaded from `localStorage` or received via `BroadcastChannel`, it passes through `ensureStateDefaults(state)` to ensure newly added properties (e.g. `teams`, `revealedBetContestantIds`, `showPartLabel`) are never `undefined`.
+- **Storage Event Fallback**: `window.addEventListener('storage', ...)` provides cross-tab synchronization fallback if `BroadcastChannel` is partitioned.
 
 ---
 

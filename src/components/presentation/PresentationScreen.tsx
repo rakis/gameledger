@@ -6,6 +6,7 @@ import { AttemptsView } from './views/AttemptsView';
 import { ScoreRevealView } from './views/ScoreRevealView';
 import { LeaderboardView } from './views/LeaderboardView';
 import { WinnerCeremonyView } from './views/WinnerCeremonyView';
+import { unlockAudioContext, isAudioContextSuspended } from '../../utils/audio';
 import {
   Maximize2,
   Minimize2,
@@ -33,6 +34,13 @@ export const PresentationScreen: React.FC<PresentationScreenProps> = ({ onCloseE
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isBlackout, setIsBlackout] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(() => !isAudioContextSuspended());
+
+  const handleInteraction = () => {
+    unlockAudioContext().then((unlocked) => {
+      if (unlocked) setAudioUnlocked(true);
+    });
+  };
 
   // Toggle browser fullscreen
   const toggleFullscreen = () => {
@@ -109,6 +117,7 @@ export const PresentationScreen: React.FC<PresentationScreenProps> = ({ onCloseE
 
   return (
     <div
+      onClick={handleInteraction}
       onMouseEnter={() => setShowControls(true)}
       onMouseLeave={() => setShowControls(false)}
       className="min-h-screen w-full bg-tm-darker text-stone-100 flex flex-col relative overflow-hidden select-none"
@@ -121,6 +130,21 @@ export const PresentationScreen: React.FC<PresentationScreenProps> = ({ onCloseE
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-tm-gold/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-tm-red/20 rounded-full blur-3xl" />
       </div>
+
+      {/* Audio Unlock Helper Banner (for autoplay restrictions on new TV screens) */}
+      {!audioUnlocked && state.soundEnabled && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            handleInteraction();
+          }}
+          className="fixed bottom-4 right-4 z-50 px-3.5 py-1.5 rounded-full bg-stone-900/95 border border-tm-gold text-tm-goldBright text-xs font-bold shadow-gold-lg flex items-center gap-2 cursor-pointer hover:bg-stone-800 transition-all animate-bounce"
+          title="Click to enable stage audio effects"
+        >
+          <VolumeX className="w-4 h-4 text-tm-gold" />
+          <span>Click anywhere to enable stage sound</span>
+        </div>
+      )}
 
       {/* Blackout overlay (for dramatic pauses) */}
       {isBlackout && (

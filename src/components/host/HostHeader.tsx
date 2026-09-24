@@ -30,6 +30,7 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
 }) => {
   const {
     state,
+    isStageConnected,
     setActiveEpisode,
     addEpisode,
     setSeriesTitle,
@@ -169,11 +170,24 @@ export const HostHeader: React.FC<HostHeaderProps> = ({
 
           <button
             onClick={openStageWindow}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-200 text-xs font-semibold border border-stone-700 transition-colors"
-            title="Open stage display in a separate popup window (for TV/Projector)"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+              isStageConnected
+                ? 'bg-emerald-950/40 text-emerald-300 border-emerald-700/60 shadow-sm'
+                : 'bg-stone-900 hover:bg-stone-800 text-stone-200 border-stone-700'
+            }`}
+            title={
+              isStageConnected
+                ? 'TV Stage Screen connected and active'
+                : 'Open stage display in a separate popup window (for TV/Projector)'
+            }
           >
-            <ExternalLink className="w-3.5 h-3.5 text-tm-gold" />
+            <ExternalLink className={`w-3.5 h-3.5 ${isStageConnected ? 'text-emerald-400' : 'text-tm-gold'}`} />
             <span className="hidden md:inline">TV Popout</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isStageConnected ? 'bg-emerald-400 animate-pulse' : 'bg-stone-600'
+              }`}
+            />
           </button>
 
           {/* Sound Toggle */}

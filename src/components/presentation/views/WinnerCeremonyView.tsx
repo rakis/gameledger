@@ -14,11 +14,13 @@ export const WinnerCeremonyView: React.FC = () => {
     return () => clearTimeout(timer);
   }, [triggerConfetti]);
 
-  const winner = seriesTotals[0];
-  const second = seriesTotals[1];
-  const third = seriesTotals[2];
+  const firstRankContestants = seriesTotals.filter((t) => t.rank === 1);
+  const isTieForFirst = firstRankContestants.length > 1;
+  const winners = firstRankContestants.length > 0 ? firstRankContestants : (seriesTotals[0] ? [seriesTotals[0]] : []);
+  const second = isTieForFirst ? null : seriesTotals.find((t) => t.rank === 2);
+  const third = seriesTotals.find((t) => t.rank === 3);
 
-  if (!winner) {
+  if (winners.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-stone-400 font-serif text-2xl">
         No contestants found.
@@ -44,20 +46,20 @@ export const WinnerCeremonyView: React.FC = () => {
       <div className="space-y-2 mb-8">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs md:text-sm font-bold uppercase tracking-widest">
           <Sparkles className="w-4 h-4" />
-          Champion of {state.seriesTitle}
+          {isTieForFirst ? 'Joint Champions' : 'Champion'} of {state.seriesTitle}
         </div>
-        <h1 className="font-serif font-black text-4xl md:text-6xl lg:text-7xl text-stone-100 tracking-tight leading-tight">
-          {winner.contestant.name}
+        <h1 className="font-serif font-black text-3xl md:text-5xl lg:text-6xl text-stone-100 tracking-tight leading-tight">
+          {winners.map((w) => w.contestant.name).join(' & ')}
         </h1>
         <p className="text-tm-gold text-xl md:text-2xl font-bold font-mono tracking-wider">
-          {winner.seriesScore} Total Points
+          {winners[0]?.seriesScore} Total Points {isTieForFirst ? '(Tied)' : ''}
         </p>
       </div>
 
       {/* The Podium: 2nd, 1st, 3rd */}
       <div className="grid grid-cols-3 gap-3 md:gap-6 items-end w-full max-w-2xl pt-4">
         {/* 2nd Place */}
-        {second && (
+        {second ? (
           <div className="flex flex-col items-center">
             <div
               className="w-14 h-14 md:w-18 md:h-18 rounded-full flex items-center justify-center text-2xl font-bold shadow-md ring-2 ring-slate-400 mb-2"
@@ -77,33 +79,43 @@ export const WinnerCeremonyView: React.FC = () => {
               </span>
             </div>
           </div>
+        ) : (
+          <div className="w-full h-24 md:h-32 flex items-center justify-center opacity-40">
+            {isTieForFirst && <span className="text-xs text-stone-500 italic">No 2nd (Tie)</span>}
+          </div>
         )}
 
         {/* 1st Place (Winner Center) */}
         <div className="flex flex-col items-center transform -translate-y-4">
           <Crown className="w-8 h-8 text-tm-goldBright animate-bounce mb-1" />
-          <div
-            className="w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center text-4xl font-bold shadow-gold-lg ring-4 ring-tm-goldBright mb-2"
-            style={{ backgroundColor: winner.contestant.colorHex }}
-          >
-            {winner.contestant.avatar}
+          <div className="flex items-center justify-center gap-2 mb-2 flex-wrap">
+            {winners.map((w) => (
+              <div
+                key={w.contestant.id}
+                className="w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-3xl font-bold shadow-gold-lg ring-4 ring-tm-goldBright"
+                style={{ backgroundColor: w.contestant.colorHex }}
+                title={`${w.contestant.name} (${w.seriesScore} pts)`}
+              >
+                {w.contestant.avatar}
+              </div>
+            ))}
           </div>
-          <span className="font-bold text-stone-100 text-base md:text-lg">
-            {winner.contestant.name}
+          <span className="font-bold text-stone-100 text-sm md:text-base text-center truncate max-w-[180px]">
+            {winners.map((w) => w.contestant.name).join(' & ')}
           </span>
           <span className="font-mono text-sm md:text-base text-tm-goldBright font-black">
-            {winner.seriesScore} pts
+            {winners[0]?.seriesScore} pts
           </span>
           <div className="w-full bg-amber-600/40 border-t-4 border-tm-goldBright rounded-t-xl h-36 md:h-48 flex flex-col items-center justify-center mt-2 shadow-gold">
-            <span className="font-serif font-black text-3xl md:text-4xl text-tm-goldBright">
-              1st
+            <span className="font-serif font-black text-2xl md:text-4xl text-tm-goldBright text-center px-1">
+              {isTieForFirst ? '1st (Tie)' : '1st'}
             </span>
             <Award className="w-6 h-6 text-tm-gold mt-1" />
           </div>
         </div>
 
         {/* 3rd Place */}
-        {third && (
+        {third ? (
           <div className="flex flex-col items-center">
             <div
               className="w-14 h-14 md:w-18 md:h-18 rounded-full flex items-center justify-center text-2xl font-bold shadow-md ring-2 ring-amber-700 mb-2"
@@ -123,6 +135,8 @@ export const WinnerCeremonyView: React.FC = () => {
               </span>
             </div>
           </div>
+        ) : (
+          <div className="w-full h-16 md:h-24" />
         )}
       </div>
 

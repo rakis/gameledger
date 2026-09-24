@@ -17,6 +17,24 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+export function isAudioContextSuspended(): boolean {
+  if (typeof window === 'undefined') return false;
+  return audioCtx ? audioCtx.state === 'suspended' : false;
+}
+
+export async function unlockAudioContext(): Promise<boolean> {
+  const ctx = getAudioContext();
+  if (!ctx) return false;
+  try {
+    if ((ctx.state as string) === 'suspended') {
+      await ctx.resume();
+    }
+    return (ctx.state as string) === 'running';
+  } catch {
+    return false;
+  }
+}
+
 export function playSealBreak() {
   const ctx = getAudioContext();
   if (!ctx) return;

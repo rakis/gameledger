@@ -181,10 +181,21 @@ export const TaskScorerPanel: React.FC<TaskScorerPanelProps> = ({ onOpenPrintMod
 
     const pointScale = [5, 4, 3, 2, 1];
     const updates: Record<string, Partial<ScoreEntry>> = {};
+    let curRank = 1;
+
     scoredContestants.forEach((c, idx) => {
+      const timeC = (currentSubtask ? currentSubtask.scores[c.id]?.timeTakenSeconds : activeTask.scores[c.id]?.timeTakenSeconds) || 0;
+      if (idx > 0) {
+        const prevC = scoredContestants[idx - 1];
+        const prevTime = (currentSubtask ? currentSubtask.scores[prevC.id]?.timeTakenSeconds : activeTask.scores[prevC.id]?.timeTakenSeconds) || 0;
+        if (timeC > prevTime) {
+          curRank = idx + 1;
+        }
+      }
+      const pts = pointScale[curRank - 1] ?? 1;
       updates[c.id] = {
-        points: idx < pointScale.length ? pointScale[idx] : 1,
-        rank: idx + 1,
+        points: pts,
+        rank: curRank,
         isDisqualified: false,
       };
     });

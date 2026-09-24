@@ -136,6 +136,31 @@ for (const soundType of soundTypes) {
 }
 console.log(`✔ All ${soundTypes.length} SoundTypes handled in GameContext audio dispatcher (${soundTypes.join(', ')}).`);
 
+// Extract BroadcastMessage types
+assert.ok(
+  gameContextContent.includes("msg.type === 'STAGE_PING'"),
+  'GameContext.tsx must handle STAGE_PING message type'
+);
+assert.ok(
+  gameContextContent.includes("msg.type === 'STAGE_PONG'"),
+  'GameContext.tsx must handle STAGE_PONG message type'
+);
+console.log('✔ STAGE_PING and STAGE_PONG heartbeat handlers implemented in GameContext.');
+
+// Verify Timer Authority Invariant (Host only, never Stage display)
+assert.ok(
+  gameContextContent.includes('if (isStageMode) return;'),
+  'GameContext.tsx timer runner must guard against running in stage mode (if (isStageMode) return;)'
+);
+console.log('✔ Timer authority invariant verified: Host is sole authoritative clock runner.');
+
+// Verify StorageEvent fallback sync invariant
+assert.ok(
+  gameContextContent.includes("window.addEventListener('storage'"),
+  'GameContext.tsx must listen to storage events as cross-tab fallback sync'
+);
+console.log('✔ Storage event cross-tab fallback sync invariant verified.');
+
 // ============================================================================
 // 4. Schema Integrity & Validation
 // ============================================================================
